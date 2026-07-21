@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
 import json
 from datetime import datetime, timedelta
 import uuid
+import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='../frontend', static_url_path='')
 CORS(app)
 
 # In-memory storage (in production, use a database)
@@ -66,7 +67,7 @@ class DemonCat:
         return {'action': 'pet', 'mood': self.mood}
     
     def wash(self):
-        """Мытьё пито��ца"""
+        """Мытьё питомца"""
         self.cleanliness = min(100, self.cleanliness + 40)
         self.hunger = min(100, self.hunger + 10)
         self.energy = max(0, self.energy - 15)
@@ -121,10 +122,16 @@ class DemonCat:
 
 # ============ ROUTES ============
 
-@app.route('/', methods=['GET'])
+@app.route('/')
 def index():
     """Главная страница"""
-    return render_template('index.html')
+    return send_from_directory('../frontend', 'index.html')
+
+
+@app.route('/<path:path>')
+def send_static(path):
+    """Отправить статические файлы (CSS, JS)"""
+    return send_from_directory('../frontend', path)
 
 
 @app.route('/api/pet/create', methods=['POST'])
