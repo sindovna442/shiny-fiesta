@@ -1,0 +1,473 @@
+:root {
+    --primary-color: #ff4444;
+    --secondary-color: #cc0000;
+    --accent-color: #ffaa00;
+    --background: #fff5f0;
+    --text-color: #2c2c2c;
+    --border-color: #ffdddd;
+    --success-color: #66dd00;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(135deg, #ffe6e6 0%, #fff5f0 100%);
+    color: var(--text-color);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.container {
+    width: 100%;
+    max-width: 800px;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(255, 68, 68, 0.15);
+    overflow: hidden;
+}
+
+/* Экраны */
+.screen {
+    display: none;
+    animation: fadeIn 0.3s ease-in;
+    padding: 20px;
+}
+
+.screen.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Заголовок */
+.header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 3px solid var(--primary-color);
+    padding-bottom: 15px;
+}
+
+.header h1 {
+    font-size: 2.5em;
+    color: var(--primary-color);
+    margin-bottom: 5px;
+}
+
+.pet-name {
+    font-size: 1.2em;
+    color: var(--secondary-color);
+    font-style: italic;
+}
+
+/* Контейнер питомца */
+.pet-container {
+    display: flex;
+    justify-content: center;
+    margin: 30px 0;
+    background: var(--background);
+    border-radius: 15px;
+    padding: 20px;
+    border: 3px dashed var(--border-color);
+}
+
+#petCanvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Панель показателей */
+.stats-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin: 25px 0;
+}
+
+.stat {
+    background: var(--background);
+    padding: 12px;
+    border-radius: 10px;
+    border: 2px solid var(--border-color);
+}
+
+.stat label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 8px;
+    font-size: 0.9em;
+}
+
+.stat-bar {
+    width: 100%;
+    height: 20px;
+    background: #f0f0f0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #ddd;
+    margin-bottom: 5px;
+}
+
+.stat-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+    width: 50%;
+    transition: width 0.3s ease;
+}
+
+.stat span {
+    font-size: 0.85em;
+    color: #666;
+}
+
+/* Кнопки управления */
+.controls {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 25px 0;
+}
+
+.control-btn {
+    padding: 15px;
+    font-size: 1em;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.control-btn span:first-child {
+    font-size: 1.5em;
+}
+
+.feed-btn {
+    background: linear-gradient(135deg, #ff6b6b, #ff4444);
+}
+
+.pet-btn {
+    background: linear-gradient(135deg, #ffa500, #ff8c00);
+}
+
+.wash-btn {
+    background: linear-gradient(135deg, #4ecdc4, #00d4d4);
+}
+
+.sleep-btn {
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+}
+
+.control-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.control-btn:active {
+    transform: translateY(0);
+}
+
+/* Навигация */
+.navigation {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.nav-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.sketch-btn {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+}
+
+.sketch-btn:hover {
+    transform: scale(1.05);
+}
+
+/* Экран скетчбука */
+.sketch-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 3px solid var(--primary-color);
+    padding-bottom: 15px;
+}
+
+.back-btn {
+    background: var(--background);
+    border: 2px solid var(--primary-color);
+    padding: 8px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.back-btn:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+.sketch-header h2 {
+    color: var(--primary-color);
+}
+
+.sketch-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.create-sketch-btn {
+    padding: 30px;
+    background: linear-gradient(135deg, var(--accent-color), #ffcc00);
+    border: 3px dashed var(--border-color);
+    border-radius: 15px;
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+    min-height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.create-sketch-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(255, 170, 0, 0.3);
+}
+
+.sketch-item {
+    background: var(--background);
+    border: 2px solid var(--border-color);
+    border-radius: 15px;
+    padding: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.sketch-item:hover {
+    box-shadow: 0 5px 15px rgba(255, 68, 68, 0.2);
+    transform: translateY(-3px);
+}
+
+.sketch-item-preview {
+    width: 100%;
+    height: 120px;
+    background: white;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    object-fit: cover;
+}
+
+.sketch-item-title {
+    font-weight: bold;
+    text-align: center;
+    font-size: 0.85em;
+    color: var(--secondary-color);
+}
+
+.sketch-item-delete {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(255, 68, 68, 0.8);
+    border: none;
+    color: white;
+    border-radius: 50%;
+    width: 25px;
+    height: 25px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.sketch-item-delete:hover {
+    background: rgba(255, 68, 68, 1);
+}
+
+/* Экран редактора */
+.editor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 3px solid var(--primary-color);
+    padding-bottom: 15px;
+}
+
+.editor-header h2 {
+    color: var(--primary-color);
+}
+
+.save-btn {
+    background: linear-gradient(135deg, var(--success-color), #00aa00);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.save-btn:hover {
+    transform: scale(1.05);
+}
+
+.editor-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.toolbar {
+    background: var(--background);
+    padding: 15px;
+    border-radius: 10px;
+    border: 2px solid var(--border-color);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+}
+
+.tool-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tool-group label {
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.tool-btn,
+.action-btn {
+    padding: 8px 15px;
+    border: 2px solid var(--primary-color);
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: bold;
+}
+
+.tool-btn:hover,
+.action-btn:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+.tool-btn.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+#brushSize {
+    width: 100px;
+}
+
+#colorPicker {
+    width: 50px;
+    height: 40px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#sizeDisplay {
+    min-width: 20px;
+    text-align: center;
+}
+
+.canvas-wrapper {
+    display: flex;
+    justify-content: center;
+    background: var(--background);
+    padding: 15px;
+    border-radius: 10px;
+    border: 2px solid var(--border-color);
+}
+
+#drawingCanvas {
+    background: white;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    cursor: crosshair;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Адаптив */
+@media (max-width: 600px) {
+    .header h1 {
+        font-size: 1.8em;
+    }
+
+    .stats-panel {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .controls {
+        grid-template-columns: 1fr;
+    }
+
+    .toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .tool-group {
+        width: 100%;
+    }
+
+    #drawingCanvas {
+        width: 100%;
+        height: auto;
+    }
+}
