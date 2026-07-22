@@ -1039,6 +1039,16 @@ const game = {
         }
         const reactionProgress = reaction ? (now - (this.reactionEndTime - 1500)) / 1500 : 0;
         
+        // ===== СПЕЦИАЛЬНЫЕ АНИМАЦИИ =====
+        // Если кот в ванне — рисуем только голову + пузырьки
+        if (this.pet && this.pet.in_bath) {
+            return this.drawCatInBath(ctx, x, y, scale, now, reaction);
+        }
+        // Если кот в кровати — спящая поза
+        if (this.pet && this.pet.in_bed) {
+            return this.drawCatInBed(ctx, x, y, scale, now, reaction);
+        }
+        
         // ===== СЛОЙ 1 (ЗАДНИЙ): Хвост + Нижние лапы =====
         
         // Хвост (изгибается, тёмно-красный)
@@ -1352,6 +1362,259 @@ const game = {
             ctx.textBaseline = 'middle';
             ctx.fillText('Zzz', x + 40 * scale, bubbleY);
         }
+    },
+
+    // Специальная отрисовка: кот в ванне (только голова + пузырьки)
+    drawCatInBath(ctx, x, y, scale, now, reaction) {
+        const waterLevel = y + 15 * scale;  // уровень воды — чуть ниже головы
+        const breath = Math.sin(now / 800) * 2;
+        
+        // === ВОДА ===
+        ctx.save();
+        
+        // Водная гладь (полупрозрачная) над телом
+        const grad = ctx.createLinearGradient(x - 80 * scale, waterLevel, x + 80 * scale, waterLevel + 60 * scale);
+        grad.addColorStop(0, 'rgba(100, 200, 255, 0.6)');
+        grad.addColorStop(0.5, 'rgba(135, 206, 250, 0.7)');
+        grad.addColorStop(1, 'rgba(100, 200, 255, 0.6)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(x, waterLevel + 25 * scale, 80 * scale, 30 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Блик на воде (светлая полоса)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.ellipse(x - 15 * scale, waterLevel + 15 * scale, 40 * scale, 5 * scale, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // === ГОЛОВА (над водой) ===
+        // Голова — круг
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(x, y - 55 * scale + breath, 55 * scale, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Уши
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.moveTo(x - 45 * scale, y - 80 * scale + breath);
+        ctx.lineTo(x - 25 * scale, y - 120 * scale + breath);
+        ctx.lineTo(x - 10 * scale, y - 75 * scale + breath);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x + 45 * scale, y - 80 * scale + breath);
+        ctx.lineTo(x + 25 * scale, y - 120 * scale + breath);
+        ctx.lineTo(x + 10 * scale, y - 75 * scale + breath);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Глаза счастливые (закрытые ^^)
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 3 * scale;
+        ctx.beginPath();
+        ctx.arc(x - 18 * scale, y - 60 * scale + breath, 10 * scale, Math.PI + 0.3, -0.3);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x + 18 * scale, y - 60 * scale + breath, 10 * scale, Math.PI + 0.3, -0.3);
+        ctx.stroke();
+        
+        // Ротик (довольная улыбка)
+        ctx.beginPath();
+        ctx.arc(x, y - 45 * scale + breath, 10 * scale, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+        
+        // Нос
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.moveTo(x, y - 50 * scale + breath);
+        ctx.lineTo(x - 5 * scale, y - 45 * scale + breath);
+        ctx.lineTo(x + 5 * scale, y - 45 * scale + breath);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Щёчки (розовые)
+        ctx.fillStyle = 'rgba(255, 150, 150, 0.4)';
+        ctx.beginPath();
+        ctx.ellipse(x - 40 * scale, y - 45 * scale + breath, 12 * scale, 8 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(x + 40 * scale, y - 45 * scale + breath, 12 * scale, 8 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Полоски на щеках
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 3 * scale;
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x - 55 * scale, y - 55 * scale + i * 12 * scale + breath);
+            ctx.lineTo(x - 40 * scale, y - 55 * scale + i * 12 * scale + breath);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + 55 * scale, y - 55 * scale + i * 12 * scale + breath);
+            ctx.lineTo(x + 40 * scale, y - 55 * scale + i * 12 * scale + breath);
+            ctx.stroke();
+        }
+        
+        // === ПУЗЫРЬКИ ===
+        const bubbleTime = now / 400;
+        for (let i = 0; i < 8; i++) {
+            const bx = x + (Math.sin(bubbleTime + i * 2.3)) * 45 * scale;
+            const by = waterLevel + 30 * scale - (now % 3000) / 3000 * 80 * scale - i * 15 * scale;
+            const br = (4 + Math.sin(bubbleTime + i * 1.7) * 2) * scale;
+            
+            // Круговой сдвиг для реалистичности
+            const offsetX = Math.sin(bubbleTime * 0.5 + i) * 10 * scale;
+            
+            ctx.fillStyle = 'rgba(200, 230, 255, ' + (0.3 + Math.sin(bubbleTime + i) * 0.15) + ')';
+            ctx.beginPath();
+            ctx.arc(bx + offsetX, ((by % (waterLevel + 20)) ), Math.max(1, br), 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Блик пузырька
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.arc(bx + offsetX - br * 0.3, ((by % (waterLevel + 20))) - br * 0.3, br * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Пенный воротник вокруг шеи
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI + Math.sin(now / 600 + i) * 0.3;
+            const fx = x + Math.cos(angle) * 55 * scale;
+            const fy = waterLevel - 5 * scale + Math.sin(now / 500 + i * 1.5) * 5 * scale;
+            ctx.beginPath();
+            ctx.arc(fx, fy, (8 + Math.sin(now / 700 + i * 2) * 3) * scale, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    },
+
+    // Специальная отрисовка: кот в кровати (спящая поза)
+    drawCatInBed(ctx, x, y, scale, now, reaction) {
+        const breath = Math.sin(now / 1200) * 2;
+        const zzzFloat = Math.sin(now / 600) * 8;
+        
+        ctx.save();
+        
+        // === ТЕЛО (свернулось калачиком) ===
+        // Спящее тело — широкая эллиптическая форма
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(x + breath, y + 10 * scale, 75 * scale, 35 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Животик
+        ctx.fillStyle = '#ff9999';
+        ctx.beginPath();
+        ctx.ellipse(x + 5 * scale + breath, y + 18 * scale, 45 * scale, 20 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // === ПОДУШКА (под головой) ===
+        ctx.fillStyle = '#FFF';
+        ctx.beginPath();
+        ctx.ellipse(x - 50 * scale, y - 5 * scale + breath, 35 * scale, 20 * scale, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // === ХВОСТ (свёрнутый вокруг тела) ===
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 12 * scale;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.ellipse(x + 10 * scale + breath, y + 15 * scale, 85 * scale, 30 * scale, 0.3, 0, Math.PI);
+        ctx.stroke();
+        
+        // === ГОЛОВА (на подушке) ===
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(x - 50 * scale, y - 15 * scale + breath, 45 * scale, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Ушки (расслабленные, чуть прижаты)
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.moveTo(x - 80 * scale, y - 35 * scale + breath);
+        ctx.lineTo(x - 65 * scale, y - 60 * scale + breath);
+        ctx.lineTo(x - 55 * scale, y - 35 * scale + breath);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x - 25 * scale, y - 35 * scale + breath);
+        ctx.lineTo(x - 35 * scale, y - 60 * scale + breath);
+        ctx.lineTo(x - 15 * scale, y - 35 * scale + breath);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Глаза закрытые (короткие чёрточки)
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 3 * scale;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - 60 * scale, y - 20 * scale + breath);
+        ctx.lineTo(x - 50 * scale, y - 18 * scale + breath);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - 42 * scale, y - 20 * scale + breath);
+        ctx.lineTo(x - 32 * scale, y - 18 * scale + breath);
+        ctx.stroke();
+        
+        // Нос
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.moveTo(x - 46 * scale, y - 12 * scale + breath);
+        ctx.lineTo(x - 49 * scale, y - 8 * scale + breath);
+        ctx.lineTo(x - 43 * scale, y - 8 * scale + breath);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Улыбка (довольная)
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2 * scale;
+        ctx.beginPath();
+        ctx.arc(x - 46 * scale, y - 5 * scale + breath, 7 * scale, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+        
+        // === ОДЕЯЛО ===
+        ctx.fillStyle = '#2C5F8A';
+        ctx.beginPath();
+        ctx.ellipse(x + 30 * scale + breath, y + 20 * scale, 50 * scale, 20 * scale, 0.2, 0, Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#3A7AB5';
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x + i * 25 * scale, y + 10 * scale);
+            ctx.lineTo(x + i * 25 * scale, y + 30 * scale);
+            ctx.stroke();
+        }
+        
+        // === Zzz АНИМАЦИЯ ===
+        ctx.fillStyle = 'rgba(200, 200, 255, 0.7)';
+        ctx.font = 'bold ' + (22 * scale) + 'px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        const zzzAlpha = 0.5 + Math.sin(now / 500) * 0.3;
+        ctx.globalAlpha = zzzAlpha;
+        
+        const zzzOffset = Math.sin(now / 800) * 3;
+        ctx.fillText('Z', x - 5 * scale + zzzOffset, y - 80 * scale + zzzFloat);
+        ctx.font = 'bold ' + (28 * scale) + 'px Arial';
+        ctx.fillText('z', x + 15 * scale + zzzOffset, y - 100 * scale + zzzFloat * 1.3);
+        ctx.font = 'bold ' + (34 * scale) + 'px Arial';
+        ctx.fillText('z', x + 40 * scale + zzzOffset, y - 125 * scale + zzzFloat * 1.6);
+        
+        // Маленькие Zzz пузырьки
+        ctx.font = 'bold ' + (14 * scale) + 'px Arial';
+        ctx.fillStyle = 'rgba(200, 200, 255, ' + (0.3 + Math.sin(now / 400) * 0.2) + ')';
+        ctx.fillText('z', x - 20 * scale, y - 65 * scale + Math.sin(now / 600 + 1) * 5);
+        ctx.fillText('z', x + 30 * scale, y - 150 * scale + Math.sin(now / 700 + 2) * 6);
+        
+        ctx.globalAlpha = 1;
+        ctx.restore();
     },
 
     // Получить масштаб в зависимости от стадии
