@@ -213,8 +213,12 @@ const game = {
             this.handleCanvasClick(x, y);
         });
         
-        // Hover для подсветки предметов
+        // Hover для подсветки предметов (троттлинг 50ms)
+        let lastHoverTime = 0;
         canvas.addEventListener('mousemove', (e) => {
+            const now = Date.now();
+            if (now - lastHoverTime < 50) return; // ← троттлинг: не чаще 20 раз/сек
+            lastHoverTime = now;
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
@@ -411,30 +415,9 @@ const game = {
         ctx.fill();
     },
 
-    // Обработка hover по Canvas
+    // Обработка hover — только смена курсора, без drawPet()
     handleCanvasHover(x, y, canvas) {
-        const room = this.rooms[this.currentRoom];
-        if (!room.item) {
-            this.hoveredItem = null;
-            canvas.style.cursor = 'default';
-            return;
-        }
-        
-        const item = room.item;
-        const itemX = canvas.width * item.x;
-        const itemY = canvas.height * item.y;
-        const itemW = canvas.width * item.w;
-        const itemH = canvas.height * item.h;
-        
-        if (x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
-            y >= itemY - itemH/2 && y <= itemY + itemH/2) {
-            this.hoveredItem = item.type;
-            canvas.style.cursor = 'pointer';
-        } else {
-            this.hoveredItem = null;
-            canvas.style.cursor = 'default';
-        }
-        this.drawPet();
+        this.updateCursorOnly(x, y, canvas);
     },
 
     // Создать нового питомца
@@ -555,12 +538,11 @@ const game = {
     startGameLoop() {
         this.updateInterval = setInterval(() => {
             this.getPetStatus();
-            this.updateUI();
-            this.drawPet();
+            // updateUI вызывает drawPet() сам, не дублируем
         }, 2000);
     },
 
-    // Обновить UI
+    // Обновить UI + перерисовка
     updateUI() {
         if (!this.pet) return;
 
@@ -574,8 +556,48 @@ const game = {
         this.updateStat('energy', this.pet.energy);
         this.updateStat('health', this.pet.health);
 
-        // Рисуем питомца
+        // Рисуем питомца (вызывается не чаще updateInterval)
         this.drawPet();
+    },
+
+    // Перерисовка при смене комнаты (без setInterval, по запросу)
+    redrawPetNow() {
+        this.drawPet();
+    },
+
+    // Только обновить курсор при hover без полной перерисовки
+    updateCursorOnly(x, y, canvas) {
+        const room = this.rooms[this.currentRoom];
+        const prevHovered = this.hoveredItem;
+        
+        if (!room.item || this.drawPet) {
+            // Быстрая проверка: границы кликабельности
+            const item = room.item;
+            const itemX = canvas.width * item.x;
+            const itemY = canvas.height * item.y;
+            const itemW = canvas.width * item.w;
+            const itemH = canvas.height * item.h;
+            
+            const inside = x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
+                          y >= itemY - itemH/2 && y <= itemY + itemH/2;
+            
+            if (inside && prevHovered !== item.type) {
+                this.hoveredItem = item.type;
+                canvas.style.cursor = 'pointer';
+                this.drawPet(); // перерисовка только когда hover меняется
+            } else if (!inside && prevHovered !== null) {
+                this.hoveredItem = null;
+                canvas.style.cursor = 'default';
+                this.drawPet(); // перерисовка только когда hover снимается
+            }
+            return;
+        }
+        
+        // Без предметов — просто курсор, без drawPet()
+        if (prevHovered !== null) {
+            this.hoveredItem = null;
+            canvas.style.cursor = 'default';
+        }
     },
 
     // Обновить показатель
