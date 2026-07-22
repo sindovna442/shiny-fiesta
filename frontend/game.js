@@ -438,16 +438,28 @@ const game = {
                 })
             });
             
+            if (!response.ok) {
+                throw new Error('Save failed: HTTP ' + response.status);
+            }
+
             const data = await response.json();
             this.addNotification('Рисунок сохранён! Кот был в восторге! 😻', 'success');
-            
+
             // Обновляем настроение питомца
             await this.getPetStatus();
             this.updateUI();
-            
+
+            // Перезагружаем список перед переключением, иначе новый рисунок
+            // не появится до повторного захода в скетчбук (фикс UX-бага).
+            await this.loadSketches();
+
             this.backToSketchList();
         } catch (error) {
             console.error('Error saving sketch:', error);
+            this.addNotification(
+                'Не удалось сохранить рисунок. Попробуйте ещё раз.',
+                'error'
+            );
         }
     }
 };
