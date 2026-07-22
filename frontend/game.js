@@ -292,6 +292,7 @@ const game = {
         canvas.addEventListener('mouseup', (e) => {
             if (!self.dragState.active) return;
             
+            const wasPet = self.dragState.type === 'pet';
             self.dragState.active = false;
             self.dragState.type = null;
             canvas.style.cursor = 'default';
@@ -300,6 +301,44 @@ const game = {
             if (!dragMoved) {
                 const { x, y } = getCanvasCoords(e);
                 self.handleCanvasClick(x, y);
+                return;
+            }
+            
+            // === DROP ZONE === если кота перетащили на предмет
+            if (wasPet) {
+                const room = self.rooms[self.currentRoom];
+                if (room.item) {
+                    const item = room.item;
+                    const petX = canvas.width * room.petX;
+                    const petY = canvas.height * room.petY;
+                    const itemX = canvas.width * item.x;
+                    const itemY = canvas.height * item.y;
+                    const itemW = canvas.width * item.w;
+                    const itemH = canvas.height * item.h;
+                    const scale = self.getPetScale();
+                    const catRadius = 70 * scale;
+                    
+                    // Проверяем пересечение кота с предметом
+                    const dx = petX - itemX;
+                    const dy = petY - itemY;
+                    const overlapX = catRadius + itemW / 2;
+                    const overlapY = catRadius + itemH / 2;
+                    
+                    if (Math.abs(dx) < overlapX && Math.abs(dy) < overlapY * 0.7) {
+                        // Срабатывает действие предмета!
+                        if (item.action === 'toggleBath' || item.action === 'toggleBed') {
+                            if (item.action === 'toggleBath') {
+                                self.addNotification('Кот упал в ванну! 🛁', 'wash');
+                            } else {
+                                self.addNotification('Кот завалился спать! 💤', 'sleep');
+                            }
+                        } else if (item.action === 'feedPet') {
+                            self.addNotification('Кот подобрал еду! 🍖', 'feed');
+                        }
+                        self[item.action]();
+                        self.spawnParticles(item.type, itemX, itemY);
+                    }
+                }
             }
         });
         
