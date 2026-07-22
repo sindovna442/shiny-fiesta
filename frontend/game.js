@@ -2258,6 +2258,7 @@ const game = {
     nonstopLaunched: 0,
     nonstopBallTrail: [],
     nonstopPickedUp: 0,
+    nonstopExplosions: [],
     
     initNonstopBalls() {
         const canvas = document.getElementById('gameCanvas');
@@ -2272,6 +2273,7 @@ const game = {
         this.nonstopMaxAmmo = 10;
         this.nonstopLaunched = 0;
         this.nonstopPickedUp = 0;
+        this.nonstopExplosions = [];
         this.gameScore = 0;
         this.updateScore(0);
         
@@ -2386,6 +2388,21 @@ const game = {
                     ball.vy *= -1;
                     block.hp--;
                     if (block.hp <= 0) {
+                        // Спавним взрывные частицы
+                        for (let i = 0; i < 12; i++) {
+                            const angle = (Math.PI * 2 / 12) * i + Math.random() * 0.5;
+                            const speed = 1.5 + Math.random() * 3;
+                            this.nonstopExplosions.push({
+                                x: block.x + block.w/2,
+                                y: block.y + block.h/2,
+                                vx: Math.cos(angle) * speed,
+                                vy: Math.sin(angle) * speed - 2,
+                                life: 25 + Math.random() * 15,
+                                maxLife: 40,
+                                size: 2 + Math.random() * 4,
+                                color: ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#fff'][Math.floor(Math.random() * 6)]
+                            });
+                        }
                         this.nonstopBlocks.splice(bi, 1);
                         this.updateScore(10);
                     }
@@ -2445,11 +2462,48 @@ const game = {
         ctx.fillRect(-8, 0, 16, -40);
         ctx.restore();
         
-        // Счёт
+        // === РИСУЕМ ВЗРЫВНЫЕ ЧАСТИЦЫ ===
+        for (let i = this.nonstopExplosions.length - 1; i >= 0; i--) {
+            const p = this.nonstopExplosions[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.08;
+            p.life--;
+            
+            if (p.life <= 0) {
+                this.nonstopExplosions.splice(i, 1);
+                continue;
+            }
+            
+            const alpha = p.life / p.maxLife;
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        
+        // Счёт и статус
         ctx.fillStyle = 'white';
         ctx.font = 'bold 16px Arial';
         ctx.textAlign = 'left';
         ctx.fillText(`Блоков: ${this.nonstopBlocks.length}`, 10, 25);
+        ctx.fillText(`🔵 Шаров: ${this.nonstopAmmo}`, 10, 48);
+        
+        // Полоска аммо под счётом
+        if (this.nonstopMaxAmmo > 0) {
+            const barX = 10, barY = 58, barW = 100, barH = 6;
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.beginPath();
+            ctx.roundRect(barX, barY, barW, barH, 3);
+            ctx.fill();
+            const pct = this.nonstopAmmo / Math.max(this.nonstopMaxAmmo, 1);
+            ctx.fillStyle = pct > 0.3 ? '#2ecc71' : pct > 0.1 ? '#f1c40f' : '#e74c3c';
+            ctx.beginPath();
+            ctx.roundRect(barX, barY, barW * pct, barH, 3);
+            ctx.fill();
+        }
         
         this.gameAnimFrame = requestAnimationFrame(() => this.nonstopLoop(ctx, canvas));
     },
