@@ -35,6 +35,12 @@ class DemonCat:
         self.last_update = datetime.now().isoformat()
         self.created_at = datetime.now().isoformat()
         
+        # Состояния взаимодействия с предметами
+        self.in_bath = False      # в ванне?
+        self.in_bed = False       # в кровати?
+        self.is_eating = False    # ест?
+        self.food_held_time = None  # когда взял еду
+        
     def to_dict(self):
         return {
             'pet_id': self.pet_id,
@@ -47,40 +53,77 @@ class DemonCat:
             'stage': self.stage,
             'total_care_time': self.total_care_time,
             'last_update': self.last_update,
-            'created_at': self.created_at
+            'created_at': self.created_at,
+            'in_bath': self.in_bath,
+            'in_bed': self.in_bed,
+            'is_eating': self.is_eating
         }
     
     def feed(self):
-        """Кормление питомца"""
-        self.hunger = max(0, self.hunger - 30)
-        self.mood = min(100, self.mood + 5)
-        self.energy = max(0, self.energy - 5)
+        """Кормление — ждём пока кот съест (фронт запускает eat_food через 2с)"""
+        self.is_eating = True
+        self.food_held_time = datetime.now().isoformat()
         self.update_timestamp()
-        return {'action': 'feed', 'hunger': self.hunger}
+        return {'action': 'feed_start', 'is_eating': True}
+    
+    def eat_food(self):
+        """Съесть еду — голод падает, настроение растёт"""
+        self.hunger = max(0, self.hunger - 25)
+        self.mood = min(100, self.mood + 8)
+        self.energy = max(0, self.energy - 3)
+        self.is_eating = False
+        self.food_held_time = None
+        self.update_timestamp()
+        return {'action': 'eat', 'hunger': self.hunger}
     
     def pet(self):
-        """Поглаживание питомца"""
-        self.mood = min(100, self.mood + 15)
-        self.energy = max(0, self.energy - 3)
-        self.health = min(100, self.health + 2)
+        """Поглаживание — только настроение + здоровье, без влияния на голод"""
+        self.mood = min(100, self.mood + 12)
+        self.health = min(100, self.health + 1)
+        self.energy = max(0, self.energy - 2)
         self.update_timestamp()
         return {'action': 'pet', 'mood': self.mood}
     
-    def wash(self):
-        """Мытьё питомца"""
-        self.cleanliness = min(100, self.cleanliness + 40)
-        self.hunger = min(100, self.hunger + 10)
-        self.energy = max(0, self.energy - 15)
+    def enter_bath(self):
+        """Войти в ванну — чистота начнёт восстанавливаться"""
+        if self.in_bath:
+            return self.exit_bath()
+        self.in_bath = True
         self.update_timestamp()
-        return {'action': 'wash', 'cleanliness': self.cleanliness}
+        return {'action': 'enter_bath', 'in_bath': True}
+    
+    def exit_bath(self):
+        """Выйти из ванны"""
+        self.in_bath = False
+        self.cleanliness = min(100, self.cleanliness + 30)  # бонус при выходе
+        self.energy = max(0, self.energy - 5)
+        self.update_timestamp()
+        return {'action': 'exit_bath', 'cleanliness': self.cleanliness}
+    
+    def enter_bed(self):
+        """Лечь в кровать — энергия начнёт восстанавливаться"""
+        if self.in_bed:
+            return self.exit_bed()
+        self.in_bed = True
+        self.update_timestamp()
+        return {'action': 'enter_bed', 'in_bed': True}
+    
+    def exit_bed(self):
+        """Встать с кровати"""
+        self.in_bed = False
+        self.energy = min(100, self.energy + 20)  # бонус при выходе
+        self.hunger = min(100, self.hunger + 8)
+        self.mood = min(100, self.mood + 5)
+        self.update_timestamp()
+        return {'action': 'exit_bed', 'energy': self.energy}
+    
+    def wash_instantly(self):
+        """Быстрое мытьё (если не через ванну) — уже не нужно, ванна заменяет"""
+        return self.enter_bath()
     
     def sleep(self):
-        """Сон питомца"""
-        self.energy = min(100, self.energy + 50)
-        self.hunger = min(100, self.hunger + 15)
-        self.health = min(100, self.health + 5)
-        self.update_timestamp()
-        return {'action': 'sleep', 'energy': self.energy}
+        """Старый метод — перенаправляем на enter_bed"""
+        return self.enter_bed()
     
     def view_drawing(self, happiness_boost=10):
         """Питомец смотрит рисунок - повышает настроение"""
@@ -92,17 +135,48 @@ class DemonCat:
         """Обновить время последнего обновления"""
         self.last_update = datetime.now().isoformat()
     
+    def process_continuous_effects(self):
+        """Обработка непрерывных эффектов от предметов"""
+        now = datetime.now()
+        
+        # В ванне — чистота растёт, энергия медленно падает
+        if self.in_bath:
+            self.cleanliness = min(100, self.cleanliness + 2)
+            self.energy = max(0, self.energy - 1)
+            self.mood = min(100, self.mood + 0.5)
+        
+        # В кровати — энергия растёт
+        if self.in_bed:
+            self.energy = min(100, self.energy + 3)
+            self.health = min(100, self.health + 0.5)
+    
     def decay_stats(self):
-        """Показатели уменьшаются со временем"""
-        self.hunger = min(100, self.hunger + 1)  # голод растёт
-        self.cleanliness = max(0, self.cleanliness - 1)  # грязь растёт
-        self.energy = max(0, self.energy - 0.5)  # энергия падает
-        self.mood = max(0, self.mood - 0.5)  # настроение падает
+        """Показатели медленно меняются со временем"""
+        if self.in_bath or self.in_bed:
+            # В ванне/кровати статы не падают
+            self.process_continuous_effects()
+            self.update_timestamp()
+            return
+        
+        if self.is_eating:
+            # Пока ест — голод не растёт
+            self.process_continuous_effects()
+            self.update_timestamp()
+            return
+        
+        # Медленное убывание
+        self.hunger = min(100, self.hunger + 0.3)  # голод растёт медленно
+        self.cleanliness = max(0, self.cleanliness - 0.2)  # грязь растёт медленно
+        self.energy = max(0, self.energy - 0.2)  # энергия падает медленно
+        self.mood = max(0, self.mood - 0.15)  # настроение падает медленно
         
         # Здоровье зависит от других показателей
-        if self.hunger > 80 or self.cleanliness < 20:
-            self.health = max(0, self.health - 2)
+        if self.hunger > 85 or self.cleanliness < 15:
+            self.health = max(0, self.health - 0.5)
+        elif self.hunger < 40 and self.cleanliness > 60 and self.mood > 60:
+            self.health = min(100, self.health + 0.3)
         
+        self.process_continuous_effects()
         self.update_timestamp()
     
     def check_evolution(self):
@@ -166,12 +240,27 @@ def get_pet(pet_id):
 
 @app.route('/api/pet/<pet_id>/feed', methods=['POST'])
 def feed_pet(pet_id):
-    """Накормить питомца"""
+    """Начать кормление — кот берёт еду"""
     if pet_id not in pets_data:
         return jsonify({'error': 'Pet not found'}), 404
     
     pet = pets_data[pet_id]
     result = pet.feed()
+    
+    return jsonify({
+        'action': result['action'],
+        'pet': pet.to_dict()
+    })
+
+
+@app.route('/api/pet/<pet_id>/eat', methods=['POST'])
+def eat_food(pet_id):
+    """Съесть еду (вызывается через 2с после feed)"""
+    if pet_id not in pets_data:
+        return jsonify({'error': 'Pet not found'}), 404
+    
+    pet = pets_data[pet_id]
+    result = pet.eat_food()
     
     return jsonify({
         'action': result['action'],
@@ -194,34 +283,54 @@ def pet_pet(pet_id):
     })
 
 
-@app.route('/api/pet/<pet_id>/wash', methods=['POST'])
-def wash_pet(pet_id):
-    """Помыть питомца"""
+@app.route('/api/pet/<pet_id>/bath-toggle', methods=['POST'])
+def bath_toggle(pet_id):
+    """Войти/выйти из ванны"""
     if pet_id not in pets_data:
         return jsonify({'error': 'Pet not found'}), 404
     
     pet = pets_data[pet_id]
-    result = pet.wash()
+    
+    if pet.in_bath:
+        result = pet.exit_bath()
+    else:
+        result = pet.enter_bath()
     
     return jsonify({
         'action': result['action'],
         'pet': pet.to_dict()
     })
+
+
+@app.route('/api/pet/<pet_id>/bed-toggle', methods=['POST'])
+def bed_toggle(pet_id):
+    """Лечь/встать с кровати"""
+    if pet_id not in pets_data:
+        return jsonify({'error': 'Pet not found'}), 404
+    
+    pet = pets_data[pet_id]
+    
+    if pet.in_bed:
+        result = pet.exit_bed()
+    else:
+        result = pet.enter_bed()
+    
+    return jsonify({
+        'action': result['action'],
+        'pet': pet.to_dict()
+    })
+
+
+@app.route('/api/pet/<pet_id>/wash', methods=['POST'])
+def wash_pet(pet_id):
+    """Старый метод — мытьё (перенаправляем на bath-toggle)"""
+    return bath_toggle(pet_id)
 
 
 @app.route('/api/pet/<pet_id>/sleep', methods=['POST'])
 def sleep_pet(pet_id):
-    """Уложить питомца спать"""
-    if pet_id not in pets_data:
-        return jsonify({'error': 'Pet not found'}), 404
-    
-    pet = pets_data[pet_id]
-    result = pet.sleep()
-    
-    return jsonify({
-        'action': result['action'],
-        'pet': pet.to_dict()
-    })
+    """Старый метод — сон (перенаправляем на bed-toggle)"""
+    return bed_toggle(pet_id)
 
 
 @app.route('/api/pet/<pet_id>/view-drawing', methods=['POST'])
@@ -315,9 +424,6 @@ def delete_sketch(pet_id, sketch_id):
 
 
 if __name__ == '__main__':
-    # Bind to 0.0.0.0 by default so the app is reachable from the Freebuff
-    # preview wrapper when launched directly via `python backend/app.py`.
-    # Override locally with HOST=127.0.0.1 if you don't want it public.
     host = os.environ.get('HOST', '0.0.0.0')
     try:
         port = int(os.environ.get('PORT', 5000))
