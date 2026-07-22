@@ -8,6 +8,15 @@ const game = {
     updateInterval: null,
     editor: null,
     currentSketchId: null,
+    
+    // Система комнат
+    currentRoom: 0,
+    rooms: [
+        { id: 0, name: '🏠 Гостиная', color: '#1a1a2e', petX: 0.5, petY: 0.55 },
+        { id: 1, name: '🍖 Кухня', color: '#2d1810', petX: 0.45, petY: 0.6 },
+        { id: 2, name: '🛁 Ванная', color: '#1a2e3e', petX: 0.55, petY: 0.5 },
+        { id: 3, name: '😴 Спальня', color: '#1e1a2e', petX: 0.5, petY: 0.58 }
+    ],
 
     // Инициализация игры
     async init() {
@@ -181,141 +190,276 @@ const game = {
         }
     },
 
+    // Переключение комнаты
+    changeRoom(direction) {
+        this.currentRoom += direction;
+        if (this.currentRoom < 0) this.currentRoom = this.rooms.length - 1;
+        if (this.currentRoom >= this.rooms.length) this.currentRoom = 0;
+        
+        // Обновляем UI комнаты
+        const room = this.rooms[this.currentRoom];
+        document.getElementById('roomTitle').textContent = room.name;
+        
+        // Обновляем dots
+        document.querySelectorAll('.dot').forEach((dot, i) => {
+            dot.classList.toggle('active', i === this.currentRoom);
+        });
+        
+        // Обновляем фон комнаты
+        const roomEl = document.getElementById('currentRoom');
+        roomEl.style.background = room.color;
+        
+        // Перерисовываем питомца в новой позиции
+        this.drawPet();
+    },
+
     // Рисование питомца на Canvas
     drawPet() {
         const canvas = document.getElementById('petCanvas');
         if (!canvas) return;
         
         const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Рисуем демон-кота
-        this.drawDemonCat(ctx, canvas.width / 2, canvas.height / 2);
+        
+        // Рисуем фон комнаты
+        const room = this.rooms[this.currentRoom];
+        ctx.fillStyle = room.color;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Рисуем демон-кота в позиции комнаты
+        const petX = canvas.width * room.petX;
+        const petY = canvas.height * room.petY;
+        this.drawDemonCat(ctx, petX, petY);
     },
 
-    // Функция для рисования кота
+    // Функция для рисования кота (3 слоя)
     drawDemonCat(ctx, x, y) {
         const scale = this.getPetScale();
-        const moodIntensity = this.pet.mood / 100;
+        const breathOffset = Math.sin(Date.now() / 800) * 3;
+        const tailSwing = Math.sin(Date.now() / 500) * 15;
         
-        // Туловище (красное, пухлое)
-        ctx.fillStyle = '#ff4444';
-        ctx.beginPath();
-        ctx.ellipse(x, y, 60 * scale, 80 * scale, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Голова
-        ctx.fillStyle = '#ff4444';
-        ctx.beginPath();
-        ctx.arc(x, y - 70 * scale, 50 * scale, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Рожки (демонические)
-        ctx.strokeStyle = '#cc0000';
-        ctx.lineWidth = 8 * scale;
+        // ===== СЛОЙ 1 (ЗАДНИЙ): Хвост + Нижние лапы =====
+        
+        // Хвост (изгибается, тёмно-красный)
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 14 * scale;
         ctx.lineCap = 'round';
-        
-        // Левый рожок
         ctx.beginPath();
-        ctx.arc(x - 30 * scale, y - 110 * scale, 20 * scale, 0, Math.PI * 1.5);
+        ctx.moveTo(x + 70 * scale, y + 30 * scale);
+        ctx.quadraticCurveTo(
+            x + 120 * scale, 
+            y + 60 * scale + tailSwing, 
+            x + 140 * scale, 
+            y + 40 * scale
+        );
         ctx.stroke();
         
-        // Правый рожок
+        // Кончик хвоста (стрелка)
+        ctx.fillStyle = '#c0392b';
         ctx.beginPath();
-        ctx.arc(x + 30 * scale, y - 110 * scale, 20 * scale, Math.PI * 0.5, Math.PI * 2);
+        const tailEndX = x + 140 * scale;
+        const tailEndY = y + 40 * scale;
+        const tailAngle = Math.atan2(-20, 20);
+        ctx.moveTo(tailEndX + 10 * scale, tailEndY);
+        ctx.lineTo(tailEndX - 5 * scale, tailEndY - 12 * scale);
+        ctx.lineTo(tailEndX - 5 * scale, tailEndY + 12 * scale);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Нижние лапы (задние)
+        ctx.fillStyle = '#e74c3c';
+        // Левая задняя лапа
+        ctx.beginPath();
+        ctx.ellipse(x - 35 * scale, y + 65 * scale + breathOffset, 22 * scale, 15 * scale, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        // Правая задняя лапа
+        ctx.beginPath();
+        ctx.ellipse(x + 35 * scale, y + 65 * scale + breathOffset, 22 * scale, 15 * scale, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // ===== СЛОЙ 2 (СРЕДНИЙ): Тело с животиком =====
+        
+        // Тело (круглое, красное)
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(x, y + breathOffset, 70 * scale, 65 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Животик (светло-розовый, овальный)
+        ctx.fillStyle = '#ff9999';
+        ctx.beginPath();
+        ctx.ellipse(x, y + 15 * scale + breathOffset, 45 * scale, 40 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Пупок (крестик)
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 3 * scale;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - 6 * scale, y + 15 * scale + breathOffset);
+        ctx.lineTo(x + 6 * scale, y + 15 * scale + breathOffset);
+        ctx.moveTo(x, y + 9 * scale + breathOffset);
+        ctx.lineTo(x, y + 21 * scale + breathOffset);
         ctx.stroke();
-
-        // Глаза
-        // Левый глаз
-        ctx.fillStyle = 'white';
+        
+        // Улыбка под пупком
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 3 * scale;
         ctx.beginPath();
-        ctx.arc(x - 20 * scale, y - 80 * scale, 12 * scale, 0, Math.PI * 2);
+        ctx.arc(x, y + 30 * scale + breathOffset, 12 * scale, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+        
+        // ===== СЛОЙ 3 (ПЕРЕДНИЙ): Голова + Верхние лапы + Лицо =====
+        
+        // Верхние лапы (руки)
+        ctx.fillStyle = '#e74c3c';
+        // Левая рука
+        ctx.beginPath();
+        ctx.ellipse(x - 65 * scale, y - 10 * scale + breathOffset, 18 * scale, 28 * scale, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+        // Пальцы левой руки
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.ellipse(
+                x - 70 * scale + i * 8 * scale, 
+                y - 35 * scale + breathOffset,
+                5 * scale, 8 * scale, 0, 0, Math.PI * 2
+            );
+            ctx.fill();
+        }
+        // Правая рука
+        ctx.beginPath();
+        ctx.ellipse(x + 65 * scale, y - 10 * scale + breathOffset, 18 * scale, 28 * scale, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        // Пальцы правой руки
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.ellipse(
+                x + 60 * scale + i * 8 * scale, 
+                y - 35 * scale + breathOffset,
+                5 * scale, 8 * scale, 0, 0, Math.PI * 2
+            );
+            ctx.fill();
+        }
+        
+        // Голова (круглая)
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(x, y - 55 * scale + breathOffset, 55 * scale, 0, Math.PI * 2);
         ctx.fill();
         
-        ctx.fillStyle = 'black';
+        // Ушки (кошачьи, острые)
+        ctx.fillStyle = '#e74c3c';
+        // Левое ухо
         ctx.beginPath();
-        ctx.arc(x - 20 * scale, y - 80 * scale, 7 * scale, 0, Math.PI * 2);
+        ctx.moveTo(x - 45 * scale, y - 80 * scale + breathOffset);
+        ctx.lineTo(x - 25 * scale, y - 120 * scale + breathOffset);
+        ctx.lineTo(x - 10 * scale, y - 75 * scale + breathOffset);
+        ctx.closePath();
         ctx.fill();
-
-        // Правый глаз
-        ctx.fillStyle = 'white';
+        // Правое ухо
         ctx.beginPath();
-        ctx.arc(x + 20 * scale, y - 80 * scale, 12 * scale, 0, Math.PI * 2);
+        ctx.moveTo(x + 45 * scale, y - 80 * scale + breathOffset);
+        ctx.lineTo(x + 25 * scale, y - 120 * scale + breathOffset);
+        ctx.lineTo(x + 10 * scale, y - 75 * scale + breathOffset);
+        ctx.closePath();
         ctx.fill();
         
-        ctx.fillStyle = 'black';
-        ctx.beginPath();
-        ctx.arc(x + 20 * scale, y - 80 * scale, 7 * scale, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Пасть (улыбка, зависит от настроения)
-        ctx.strokeStyle = 'black';
+        // Щёчки (полоски)
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 3 * scale;
+        // Левые полоски
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x - 55 * scale, y - 55 * scale + i * 12 * scale + breathOffset);
+            ctx.lineTo(x - 40 * scale, y - 55 * scale + i * 12 * scale + breathOffset);
+            ctx.stroke();
+        }
+        // Правые полоски
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x + 55 * scale, y - 55 * scale + i * 12 * scale + breathOffset);
+            ctx.lineTo(x + 40 * scale, y - 55 * scale + i * 12 * scale + breathOffset);
+            ctx.stroke();
+        }
+        
+        // Глаза (取决于 настроения)
+        const eyeY = y - 60 * scale + breathOffset;
+        if (this.pet.mood > 70) {
+            // Счастливые глаза (^^)
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3 * scale;
+            ctx.beginPath();
+            ctx.arc(x - 18 * scale, eyeY, 10 * scale, Math.PI + 0.3, -0.3);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x + 18 * scale, eyeY, 10 * scale, Math.PI + 0.3, -0.3);
+            ctx.stroke();
+        } else if (this.pet.mood > 30) {
+            // Обычные глаза
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.arc(x - 18 * scale, eyeY, 8 * scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 18 * scale, eyeY, 8 * scale, 0, Math.PI * 2);
+            ctx.fill();
+            // Блики
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(x - 15 * scale, eyeY - 3 * scale, 3 * scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 21 * scale, eyeY - 3 * scale, 3 * scale, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // Грустные глаза
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.ellipse(x - 18 * scale, eyeY + 3 * scale, 8 * scale, 6 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 18 * scale, eyeY + 3 * scale, 8 * scale, 6 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Рот
+        ctx.strokeStyle = '#333';
         ctx.lineWidth = 3 * scale;
         ctx.beginPath();
         if (this.pet.mood > 50) {
-            // Счастливое выражение
-            ctx.arc(x, y - 60 * scale, 15 * scale, 0, Math.PI, false);
+            // Улыбка
+            ctx.arc(x, y - 45 * scale + breathOffset, 10 * scale, 0.3, Math.PI - 0.3);
         } else if (this.pet.mood < 30) {
-            // Грустное выражение
-            ctx.arc(x, y - 60 * scale, 15 * scale, 0, Math.PI, true);
+            // Грусть
+            ctx.arc(x, y - 38 * scale + breathOffset, 10 * scale, Math.PI + 0.3, -0.3);
         } else {
-            // Нейтральное выражение
-            ctx.moveTo(x - 12 * scale, y - 60 * scale);
-            ctx.lineTo(x + 12 * scale, y - 60 * scale);
+            // Нейтрально
+            ctx.moveTo(x - 8 * scale, y - 45 * scale + breathOffset);
+            ctx.lineTo(x + 8 * scale, y - 45 * scale + breathOffset);
         }
         ctx.stroke();
-
-        // Хвост-стрелка
-        ctx.strokeStyle = '#ff4444';
-        ctx.lineWidth = 10 * scale;
-        ctx.lineCap = 'round';
+        
+        // Носик (треугольник)
+        ctx.fillStyle = '#333';
         ctx.beginPath();
-        ctx.moveTo(x + 55 * scale, y + 30 * scale);
-        const tailCurve = Math.sin(Date.now() / 500) * 20;
-        ctx.quadraticCurveTo(x + 100 * scale, y + 50 * scale + tailCurve, x + 110 * scale, y + 20 * scale);
-        ctx.stroke();
-
-        // Стрелка на хвосте
-        ctx.fillStyle = '#ff4444';
-        ctx.beginPath();
-        const endX = x + 110 * scale;
-        const endY = y + 20 * scale;
-        const angle = Math.atan2(20 * scale, 10 * scale);
-        ctx.moveTo(endX, endY);
-        ctx.lineTo(endX - 12 * scale * Math.cos(angle - Math.PI / 6), endY - 12 * scale * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(endX - 12 * scale * Math.cos(angle + Math.PI / 6), endY - 12 * scale * Math.sin(angle + Math.PI / 6));
+        ctx.moveTo(x, y - 50 * scale + breathOffset);
+        ctx.lineTo(x - 5 * scale, y - 45 * scale + breathOffset);
+        ctx.lineTo(x + 5 * scale, y - 45 * scale + breathOffset);
         ctx.closePath();
         ctx.fill();
-
-        // Лапы
-        ctx.fillStyle = '#ff4444';
-        // Левая лапа
-        ctx.beginPath();
-        ctx.ellipse(x - 40 * scale, y + 75 * scale, 18 * scale, 25 * scale, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Правая лапа
-        ctx.beginPath();
-        ctx.ellipse(x + 40 * scale, y + 75 * scale, 18 * scale, 25 * scale, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Животик (светлее)
-        ctx.fillStyle = '#ff8888';
-        ctx.beginPath();
-        ctx.ellipse(x, y, 35 * scale, 55 * scale, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Спальный пузырь (если кот спит)
+        
+        // Спальный пузырь
         if (this.pet.energy < 30) {
-            ctx.fillStyle = 'rgba(100, 100, 100, 0.6)';
-            const bubbleY = y - 150 * scale;
+            ctx.fillStyle = 'rgba(100, 100, 100, 0.7)';
+            const bubbleY = y - 140 * scale;
             ctx.beginPath();
-            ctx.arc(x, bubbleY, 25 * scale, 0, Math.PI * 2);
+            ctx.arc(x + 40 * scale, bubbleY, 30 * scale, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = 'white';
-            ctx.font = `${30 * scale}px Arial`;
+            ctx.font = `bold ${28 * scale}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('Zzz', x, bubbleY);
+            ctx.fillText('Zzz', x + 40 * scale, bubbleY);
         }
     },
 
@@ -360,6 +504,16 @@ const game = {
     // Вернуться к списку скетчей
     backToSketchList() {
         this.switchScreen('sketchScreen');
+    },
+
+    // Перейти к мини-играм
+    goToMinigames() {
+        this.switchScreen('minigamesScreen');
+    },
+
+    // Запустить мини-игру (заглушка)
+    startMinigame(gameName) {
+        this.addNotification(`Мини-игра "${gameName}" скоро будет! 🎮`, 'info');
     },
 
     // Переключение экрана
