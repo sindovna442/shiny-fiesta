@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demon Cat Tamagotchi 😈🐱</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Главный экран с комнатами -->
+        <div id="mainScreen" class="screen active">
+            <div class="header">
+                <h1>Demon Cat Tamagotchi 😈🐱</h1>
+                <p id="petName" class="pet-name">Демонический Кот</p>
+            </div>
+
+            <!-- Система комнат -->
+            <div class="rooms-container">
+                <!-- Левая стрелка навигации -->
+                <button class="nav-arrow left-arrow" onclick="game.changeRoom(-1)">◀</button>
+
+                <!-- Комната -->
+                <div class="room-wrapper">
+                    <div id="currentRoom" class="room">
+                        <!-- Канвас с котиком -->
+                        <canvas id="petCanvas" width="600" height="500"></canvas>
+                        
+                        <!-- Элементы комнаты -->
+                        <div id="roomElements" class="room-elements"></div>
+                    </div>
+                </div>
+
+                <!-- Правая стрелка навигации -->
+                <button class="nav-arrow right-arrow" onclick="game.changeRoom(1)">▶</button>
+            </div>
+
+            <!-- Индикатор текущей комнаты -->
+            <div class="room-indicator">
+                <span id="roomTitle" class="room-title">Комната</span>
+                <div class="dots">
+                    <span class="dot active" data-room="0"></span>
+                    <span class="dot" data-room="1"></span>
+                    <span class="dot" data-room="2"></span>
+                    <span class="dot" data-room="3"></span>
+                </div>
+            </div>
+
+            <!-- Панель показателей -->
+            <div class="stats-panel">
+                <div class="stat">
+                    <label>🍖 Голод</label>
+                    <div class="stat-bar">
+                        <div id="hungerBar" class="stat-fill"></div>
+                    </div>
+                    <span id="hungerValue">50</span>
+                </div>
+                <div class="stat">
+                    <label>🧼 Чистота</label>
+                    <div class="stat-bar">
+                        <div id="cleanlinessBar" class="stat-fill"></div>
+                    </div>
+                    <span id="cleanlinessValue">50</span>
+                </div>
+                <div class="stat">
+                    <label>😊 Настроение</label>
+                    <div class="stat-bar">
+                        <div id="moodBar" class="stat-fill"></div>
+                    </div>
+                    <span id="moodValue">70</span>
+                </div>
+                <div class="stat">
+                    <label>⚡ Энергия</label>
+                    <div class="stat-bar">
+                        <div id="energyBar" class="stat-fill"></div>
+                    </div>
+                    <span id="energyValue">80</span>
+                </div>
+                <div class="stat">
+                    <label>❤️ Здоровье</label>
+                    <div class="stat-bar">
+                        <div id="healthBar" class="stat-fill"></div>
+                    </div>
+                    <span id="healthValue">90</span>
+                </div>
+            </div>
+
+            <!-- Кнопки навигации -->
+            <div class="navigation">
+                <button class="nav-btn sketch-btn" onclick="game.goToSketch()">
+                    📓 Открыть скетчбук
+                </button>
+                <button class="nav-btn minigames-btn" onclick="game.goToMinigames()">
+                    🎮 Мини-игры
+                </button>
+            </div>
+        </div>
+
+        <!-- Экран скетчбука -->
+        <div id="sketchScreen" class="screen">
+            <div class="sketch-header">
+                <button class="back-btn" onclick="game.backToMain()">← Назад</button>
+                <h2>📓 Скетчбук</h2>
+                <button class="new-sketch-btn" onclick="game.newSketch()" style="visibility: hidden;">Новый рисунок</button>
+            </div>
+
+            <div id="sketchList" class="sketch-list">
+                <button class="create-sketch-btn" onclick="game.newSketch()">
+                    ➕ Создать новый рисунок
+                </button>
+            </div>
+        </div>
+
+        <!-- Экран редактора рисования -->
+        <div id="editorScreen" class="screen">
+            <div class="editor-header">
+                <button class="back-btn" onclick="game.backToSketchList()">← К скетчбуку</button>
+                <h2>🎨 Редактор рисования</h2>
+                <button class="save-btn" onclick="game.saveSketch()">💾 Сохранить</button>
+            </div>
+
+            <div class="editor-container">
+                <!-- Инструменты -->
+                <div class="toolbar">
+                    <div class="tool-group">
+                        <label>Инструмент:</label>
+                        <button id="brushTool" class="tool-btn active" onclick="game.editor.selectTool('brush')">🖌️ Кисть</button>
+                        <button id="eraserTool" class="tool-btn" onclick="game.editor.selectTool('eraser')">🧹 Ластик</button>
+                    </div>
+
+                    <div class="tool-group">
+                        <label>Размер:</label>
+                        <input id="brushSize" type="range" min="1" max="50" value="5" onchange="game.editor.setBrushSize(this.value)">
+                        <span id="sizeDisplay">5</span>
+                    </div>
+
+                    <div class="tool-group">
+                        <label>Цвет:</label>
+                        <input id="colorPicker" type="color" value="#000000" onchange="game.editor.setColor(this.value)">
+                    </div>
+
+                    <div class="tool-group">
+                        <button class="action-btn" onclick="game.editor.undo()">↶ Отмена</button>
+                        <button class="action-btn" onclick="game.editor.redo()">↷ Повтор</button>
+                        <button class="action-btn" onclick="game.editor.clear()">🗑️ Очистить</button>
+                    </div>
+                </div>
+
+                <!-- Canvas для рисования -->
+                <div class="canvas-wrapper">
+                    <canvas id="drawingCanvas" width="600" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран мини-игр -->
+        <div id="minigamesScreen" class="screen">
+            <div class="minigames-header">
+                <button class="back-btn" onclick="game.backToMain()">← Назад</button>
+                <h2>🎮 Мини-игры</h2>
+            </div>
+
+            <div class="minigames-list">
+                <button class="minigame-btn" onclick="game.startMinigame('chess')">
+                    ♟️ Шахматы
+                </button>
+                <button class="minigame-btn" onclick="game.startMinigame('minesweeper')">
+                    💣 Сапер
+                </button>
+                <button class="minigame-btn" onclick="game.startMinigame('sudoku')">
+                    🔢 Судоку
+                </button>
+                <button class="minigame-btn" onclick="game.startMinigame('ricochet')">
+                    🎾 Рикошет
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
