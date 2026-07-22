@@ -2240,6 +2240,7 @@ const game = {
                 
                 const piece = this.chessBoard[row][col];
                 if (piece) {
+                    ctx.fillStyle = '#333';
                     ctx.font = '36px serif';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
@@ -2249,10 +2250,11 @@ const game = {
         }
     },
 
-    // ===== NONSTOP BALLS =====
+    // ===== ПОЛУЧЕНИЕ ХОДОВ ШАХМАТ =====
+// ===== NONSTOP BALLS =====
     nonstopBalls: [],
     nonstopBlocks: [],
-    nonstopCannon: { x: 300, angle: -Math.PI/2 },
+    nonstopCannon: { x: 300, y: 470, angle: -Math.PI/2 },
     nonstopAmmo: 10,
     nonstopMaxAmmo: 10,
     nonstopLaunched: 0,
@@ -2314,7 +2316,7 @@ const game = {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const x = (e.clientX - rect.left) * scaleX;
-            this.nonstopCannon.angle = Math.atan2(this.nonstopBalls[0]?.y - 400, x - this.nonstopCannon.x);
+            this.nonstopCannon.angle = Math.atan2(this.nonstopBalls[0]?.y - (this.nonstopCannon.y || 470), x - this.nonstopCannon.x);
             this.nonstopCannon.angle = Math.max(-Math.PI + 0.1, Math.min(-0.1, this.nonstopCannon.angle));
         };
         
