@@ -13,6 +13,13 @@ const game = {
     currentRoom: 0,
     hoveredItem: null,
     particles: [],
+    
+    // Система звука
+    audioCtx: null,
+    
+    // Система реакций кота
+    catReaction: null,
+    reactionEndTime: 0,
     rooms: [
         { id: 0, name: '🏠 Гостиная', color: '#1a1a2e', petX: 0.5, petY: 0.55 },
         { id: 1, name: '🍖 Кухня', color: '#2d1810', petX: 0.35, petY: 0.55,
@@ -36,11 +43,159 @@ const game = {
         // Инициализируем обработчики Canvas
         this.setupCanvasEvents();
         
+        // Инициализируем AudioContext
+        this.initAudio();
+        
         // Обновляем состояние каждые 2 секунды
         this.startGameLoop();
         
         // Обновляем UI
         this.updateUI();
+    },
+
+    // Инициализация аудио
+    initAudio() {
+        try {
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.log('Web Audio API не поддерживается');
+        }
+    },
+
+    // Генерация звука мяуканья
+    playMeow() {
+        if (!this.audioCtx) return;
+        
+        // Возобновляем контекст если заблокирован
+        if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume();
+        }
+        
+        const now = this.audioCtx.currentTime;
+        
+        // Основной тон мяуканья (частота меняется)
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.3);
+        
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        
+        osc.start(now);
+        osc.stop(now + 0.4);
+        
+        // Второй тон для более реалистичного звука
+        const osc2 = this.audioCtx.createOscillator();
+        const gain2 = this.audioCtx.createGain();
+        
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(900, now + 0.05);
+        osc2.frequency.exponentialRampToValueAtTime(1400, now + 0.15);
+        osc2.frequency.exponentialRampToValueAtTime(500, now + 0.35);
+        
+        gain2.gain.setValueAtTime(0.15, now + 0.05);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+        
+        osc2.connect(gain2);
+        gain2.connect(this.audioCtx.destination);
+        
+        osc2.start(now + 0.05);
+        osc2.stop(now + 0.45);
+    },
+
+    // Звук мурчания
+    playPurr() {
+        if (!this.audioCtx) return;
+        
+        if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume();
+        }
+        
+        const now = this.audioCtx.currentTime;
+        
+        // Низкочастотное мурчание
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        const lfo = this.audioCtx.createOscillator();
+        const lfoGain = this.audioCtx.createGain();
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(25, now);
+        
+        lfo.type = 'sine';
+        lfo.frequency.setValueAtTime(20, now);
+        lfoGain.gain.setValueAtTime(10, now);
+        
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+        
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0.15, now + 0.3);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.8);
+        
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        
+        osc.start(now);
+        osc.stop(now + 0.8);
+        lfo.start(now);
+        lfo.stop(now + 0.8);
+    },
+
+    // Звук недовольного кота
+    playAngryMeow() {
+        if (!this.audioCtx) return;
+        
+        if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume();
+        }
+        
+        const now = this.audioCtx.currentTime;
+        
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.linearRampToValueAtTime(200, now + 0.3);
+        
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        
+        osc.start(now);
+        osc.stop(now + 0.35);
+    },
+
+    // Получить случайную реакцию
+    getRandomReaction() {
+        const reactions = ['angry', 'cute', 'purr'];
+        return reactions[Math.floor(Math.random() * reactions.length)];
+    },
+
+    // Активировать реакцию кота
+    triggerReaction() {
+        const type = this.getRandomReaction();
+        this.catReaction = type;
+        this.reactionEndTime = Date.now() + 1500;
+        
+        // Звук в зависимости от реакции
+        if (type === 'angry') {
+            this.playAngryMeow();
+        } else if (type === 'purr') {
+            this.playPurr();
+        } else {
+            this.playMeow();
+        }
     },
 
     // Обработчики кликов и hover на Canvas
@@ -78,23 +233,60 @@ const game = {
 
     // Обработка клика по Canvas
     handleCanvasClick(x, y) {
-        const room = this.rooms[this.currentRoom];
-        if (!room.item) return;
-        
-        const item = room.item;
         const canvas = document.getElementById('petCanvas');
-        const itemX = canvas.width * item.x;
-        const itemY = canvas.height * item.y;
-        const itemW = canvas.width * item.w;
-        const itemH = canvas.height * item.h;
+        const room = this.rooms[this.currentRoom];
         
-        // Проверяем попадание
-        if (x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
-            y >= itemY - itemH/2 && y <= itemY + itemH/2) {
-            // Спавним частицы
-            this.spawnParticles(item.type, itemX, itemY);
-            // Вызываем действие
-            this[item.action]();
+        // Сначала проверяем клик по предмету комнаты
+        if (room.item) {
+            const item = room.item;
+            const itemX = canvas.width * item.x;
+            const itemY = canvas.height * item.y;
+            const itemW = canvas.width * item.w;
+            const itemH = canvas.height * item.h;
+            
+            if (x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
+                y >= itemY - itemH/2 && y <= itemY + itemH/2) {
+                this.spawnParticles(item.type, itemX, itemY);
+                this[item.action]();
+                return;
+            }
+        }
+        
+        // Проверяем клик по коту
+        const petX = canvas.width * room.petX;
+        const petY = canvas.height * room.petY;
+        const scale = this.getPetScale();
+        const catRadius = 70 * scale;
+        
+        // Попадание по телу кота
+        const dist = Math.sqrt((x - petX) ** 2 + (y - petY) ** 2);
+        if (dist < catRadius) {
+            // Гладим кота!
+            this.petPet();
+            this.triggerReaction();
+            this.spawnHeartParticles(petX, petY - 30 * scale);
+        }
+    },
+
+    // Система частиц для сердечек
+    spawnHeartParticles(x, y) {
+        for (let i = 0; i < 5; i++) {
+            const angle = -Math.PI/2 + (Math.random() - 0.5) * Math.PI;
+            const speed = 1 + Math.random() * 2;
+            
+            this.particles.push({
+                x: x + (Math.random() - 0.5) * 40,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 1,
+                life: 50 + Math.random() * 20,
+                maxLife: 70,
+                size: 8 + Math.random() * 6,
+                type: 'heart',
+                color: ['#FF6B6B', '#FF69B4', '#FF1493', '#FFB6C1'][Math.floor(Math.random() * 4)],
+                rotation: (Math.random() - 0.5) * 0.3,
+                rotSpeed: (Math.random() - 0.5) * 0.05
+            });
         }
     },
 
@@ -179,9 +371,27 @@ const game = {
                 ctx.rotate(p.rotation);
                 this.drawStar(ctx, 0, 0, 5, p.size * alpha, p.size * alpha * 0.5);
                 ctx.restore();
+            } else if (p.type === 'heart') {
+                p.rotation += p.rotSpeed;
+                ctx.fillStyle = p.color;
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+                this.drawHeart(ctx, 0, 0, p.size * alpha);
+                ctx.restore();
             }
         }
         ctx.globalAlpha = 1;
+    },
+
+    drawHeart(ctx, x, y, size) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + size * 0.3);
+        ctx.bezierCurveTo(x, y, x - size, y, x - size, y + size * 0.3);
+        ctx.bezierCurveTo(x - size, y + size * 0.6, x, y + size * 0.8, x, y + size);
+        ctx.bezierCurveTo(x, y + size * 0.8, x + size, y + size * 0.6, x + size, y + size * 0.3);
+        ctx.bezierCurveTo(x + size, y, x, y, x, y + size * 0.3);
+        ctx.fill();
     },
 
     drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
@@ -641,6 +851,16 @@ const game = {
         const breathOffset = Math.sin(Date.now() / 800) * 3;
         const tailSwing = Math.sin(Date.now() / 500) * 15;
         
+        // Проверяем реакцию
+        const now = Date.now();
+        let reaction = null;
+        if (this.catReaction && now < this.reactionEndTime) {
+            reaction = this.catReaction;
+        } else {
+            this.catReaction = null;
+        }
+        const reactionProgress = reaction ? (now - (this.reactionEndTime - 1500)) / 1500 : 0;
+        
         // ===== СЛОЙ 1 (ЗАДНИЙ): Хвост + Нижние лапы =====
         
         // Хвост (изгибается, тёмно-красный)
@@ -714,33 +934,35 @@ const game = {
         
         // ===== СЛОЙ 3 (ПЕРЕДНИЙ): Голова + Верхние лапы + Лицо =====
         
-        // Верхние лапы (руки)
+        // Верхние лапы (руки) с анимацией реакции
         ctx.fillStyle = '#e74c3c';
+        const pawWave = reaction === 'angry' ? Math.sin(now / 80) * 15 * scale : 0;
+        const pawDown = reaction === 'cute' ? 10 * scale : 0;
         // Левая рука
         ctx.beginPath();
-        ctx.ellipse(x - 65 * scale, y - 10 * scale + breathOffset, 18 * scale, 28 * scale, -0.4, 0, Math.PI * 2);
+        ctx.ellipse(x - 65 * scale, y - 10 * scale + breathOffset + pawDown, 18 * scale, 28 * scale, -0.4 + pawWave * 0.02, 0, Math.PI * 2);
         ctx.fill();
         // Пальцы левой руки
         for (let i = 0; i < 3; i++) {
             ctx.beginPath();
             ctx.ellipse(
                 x - 70 * scale + i * 8 * scale, 
-                y - 35 * scale + breathOffset,
-                5 * scale, 8 * scale, 0, 0, Math.PI * 2
+                y - 35 * scale + breathOffset + pawDown,
+                5 * scale, 8 * scale, pawWave * 0.05, 0, Math.PI * 2
             );
             ctx.fill();
         }
         // Правая рука
         ctx.beginPath();
-        ctx.ellipse(x + 65 * scale, y - 10 * scale + breathOffset, 18 * scale, 28 * scale, 0.4, 0, Math.PI * 2);
+        ctx.ellipse(x + 65 * scale, y - 10 * scale + breathOffset + pawDown, 18 * scale, 28 * scale, 0.4 - pawWave * 0.02, 0, Math.PI * 2);
         ctx.fill();
         // Пальцы правой руки
         for (let i = 0; i < 3; i++) {
             ctx.beginPath();
             ctx.ellipse(
                 x + 60 * scale + i * 8 * scale, 
-                y - 35 * scale + breathOffset,
-                5 * scale, 8 * scale, 0, 0, Math.PI * 2
+                y - 35 * scale + breathOffset + pawDown,
+                5 * scale, 8 * scale, -pawWave * 0.05, 0, Math.PI * 2
             );
             ctx.fill();
         }
@@ -751,22 +973,35 @@ const game = {
         ctx.arc(x, y - 55 * scale + breathOffset, 55 * scale, 0, Math.PI * 2);
         ctx.fill();
         
-        // Ушки (кошачьи, острые)
+        // Ушки (кошачьи, острые) с анимацией
         ctx.fillStyle = '#e74c3c';
+        const earFlop = reaction === 'cute' ? 15 * scale : 0; // Уши прижимаются
+        const earUp = reaction === 'angry' ? -10 * scale : 0; // Уши стоят
         // Левое ухо
         ctx.beginPath();
         ctx.moveTo(x - 45 * scale, y - 80 * scale + breathOffset);
-        ctx.lineTo(x - 25 * scale, y - 120 * scale + breathOffset);
+        ctx.lineTo(x - 25 * scale, y - 120 * scale + breathOffset + earUp - earFlop);
         ctx.lineTo(x - 10 * scale, y - 75 * scale + breathOffset);
         ctx.closePath();
         ctx.fill();
         // Правое ухо
         ctx.beginPath();
         ctx.moveTo(x + 45 * scale, y - 80 * scale + breathOffset);
-        ctx.lineTo(x + 25 * scale, y - 120 * scale + breathOffset);
+        ctx.lineTo(x + 25 * scale, y - 120 * scale + breathOffset + earUp - earFlop);
         ctx.lineTo(x + 10 * scale, y - 75 * scale + breathOffset);
         ctx.closePath();
         ctx.fill();
+        
+        // Краснеющие щёки при милой реакции
+        if (reaction === 'cute') {
+            ctx.fillStyle = 'rgba(255, 150, 150, 0.5)';
+            ctx.beginPath();
+            ctx.ellipse(x - 40 * scale, y - 45 * scale + breathOffset, 12 * scale, 8 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 40 * scale, y - 45 * scale + breathOffset, 12 * scale, 8 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
         
         // Щёчки (полоски)
         ctx.strokeStyle = '#c0392b';
@@ -786,9 +1021,50 @@ const game = {
             ctx.stroke();
         }
         
-        // Глаза (取决于 настроения)
+        // Глаза с учётом реакции
         const eyeY = y - 60 * scale + breathOffset;
-        if (this.pet.mood > 70) {
+        
+        if (reaction === 'angry') {
+            // Злые глаза (нахмуренные)
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3 * scale;
+            // Брови
+            ctx.beginPath();
+            ctx.moveTo(x - 28 * scale, eyeY - 8 * scale);
+            ctx.lineTo(x - 12 * scale, eyeY - 4 * scale);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + 28 * scale, eyeY - 8 * scale);
+            ctx.lineTo(x + 12 * scale, eyeY - 4 * scale);
+            ctx.stroke();
+            // Глаза
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.ellipse(x - 18 * scale, eyeY + 2 * scale, 9 * scale, 7 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 18 * scale, eyeY + 2 * scale, 9 * scale, 7 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (reaction === 'cute') {
+            // Милые закрытые глазки (^^)
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3 * scale;
+            ctx.beginPath();
+            ctx.arc(x - 18 * scale, eyeY, 10 * scale, Math.PI + 0.3, -0.3);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x + 18 * scale, eyeY, 10 * scale, Math.PI + 0.3, -0.3);
+            ctx.stroke();
+        } else if (reaction === 'purr') {
+            // Прищуренные глазки (довольные)
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.ellipse(x - 18 * scale, eyeY, 8 * scale, 4 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 18 * scale, eyeY, 8 * scale, 4 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (this.pet.mood > 70) {
             // Счастливые глаза (^^)
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 3 * scale;
@@ -826,18 +1102,39 @@ const game = {
             ctx.fill();
         }
         
-        // Рот
+        // Рот с учётом реакции
         ctx.strokeStyle = '#333';
         ctx.lineWidth = 3 * scale;
         ctx.beginPath();
-        if (this.pet.mood > 50) {
-            // Улыбка
+        
+        if (reaction === 'angry') {
+            // Злой рот (открытый)
+            ctx.moveTo(x - 12 * scale, y - 43 * scale + breathOffset);
+            ctx.lineTo(x, y - 38 * scale + breathOffset);
+            ctx.lineTo(x + 12 * scale, y - 43 * scale + breathOffset);
+            // Зубки
+            ctx.moveTo(x - 5 * scale, y - 43 * scale + breathOffset);
+            ctx.lineTo(x - 3 * scale, y - 38 * scale + breathOffset);
+            ctx.moveTo(x + 5 * scale, y - 43 * scale + breathOffset);
+            ctx.lineTo(x + 3 * scale, y - 38 * scale + breathOffset);
+        } else if (reaction === 'cute') {
+            // Милая ухмылка 'w'
+            ctx.moveTo(x - 10 * scale, y - 43 * scale + breathOffset);
+            ctx.quadraticCurveTo(x - 5 * scale, y - 38 * scale + breathOffset, x, y - 43 * scale + breathOffset);
+            ctx.quadraticCurveTo(x + 5 * scale, y - 38 * scale + breathOffset, x + 10 * scale, y - 43 * scale + breathOffset);
+        } else if (reaction === 'purr') {
+            // Довольная улыбка с язычком
+            ctx.arc(x, y - 45 * scale + breathOffset, 10 * scale, 0.3, Math.PI - 0.3);
+            ctx.fill();
+            ctx.fillStyle = '#FF9999';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 40 * scale + breathOffset, 5 * scale, 3 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (this.pet.mood > 50) {
             ctx.arc(x, y - 45 * scale + breathOffset, 10 * scale, 0.3, Math.PI - 0.3);
         } else if (this.pet.mood < 30) {
-            // Грусть
             ctx.arc(x, y - 38 * scale + breathOffset, 10 * scale, Math.PI + 0.3, -0.3);
         } else {
-            // Нейтрально
             ctx.moveTo(x - 8 * scale, y - 45 * scale + breathOffset);
             ctx.lineTo(x + 8 * scale, y - 45 * scale + breathOffset);
         }
@@ -851,6 +1148,18 @@ const game = {
         ctx.lineTo(x + 5 * scale, y - 45 * scale + breathOffset);
         ctx.closePath();
         ctx.fill();
+        
+        // Буква «Мяу» при реакции
+        if (reaction && reactionProgress < 0.5) {
+            const meowAlpha = 1 - reactionProgress * 2;
+            ctx.globalAlpha = meowAlpha;
+            ctx.fillStyle = reaction === 'angry' ? '#FF4444' : reaction === 'cute' ? '#FF69B4' : '#888';
+            ctx.font = `bold ${18 * scale}px Arial`;
+            ctx.textAlign = 'center';
+            const meowText = reaction === 'purr' ? 'мурр~' : reaction === 'angry' ? 'ФРРР!' : 'мяу~';
+            ctx.fillText(meowText, x + 60 * scale, y - 90 * scale + breathOffset - reactionProgress * 30);
+            ctx.globalAlpha = 1;
+        }
         
         // Спальный пузырь
         if (this.pet.energy < 30) {
