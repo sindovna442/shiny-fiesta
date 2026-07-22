@@ -121,6 +121,25 @@ const game = {
         }
     },
 
+    // Сбросить игру — завести нового питомца
+    async resetPet() {
+        if (!confirm('Сбросить игру? Текущий питомец будет заменён новым.')) {
+            return;
+        }
+        try {
+            if (this.updateInterval) {
+                clearInterval(this.updateInterval);
+                this.updateInterval = null;
+            }
+            await this.createNewPet();
+            this.startGameLoop();
+            this.updateUI();
+            this.addNotification('Игра сброшена! Новый демон-кот на сцене 😈🐱', 'reset');
+        } catch (error) {
+            console.error('Error resetting pet:', error);
+        }
+    },
+
     // Цикл обновления игры
     startGameLoop() {
         this.updateInterval = setInterval(() => {
@@ -436,19 +455,38 @@ const game = {
                     title,
                     imageData
                 })
-            });
-            
-            const data = await response.json();
+            });            const data = await response.json();
             this.addNotification('Рисунок сохранён! Кот был в восторге! 😻', 'success');
-            
+
             // Обновляем настроение питомца
             await this.getPetStatus();
             this.updateUI();
-            
+
             this.backToSketchList();
         } catch (error) {
             console.error('Error saving sketch:', error);
         }
+    },
+
+    // Скачать текущий рисунок как PNG
+    exportSketch() {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = 'sketch-' + stamp + '.png';
+        this.editor.canvas.toBlob((blob) => {
+            if (!blob) {
+                this.addNotification('Не удалось экспортировать рисунок 😿', 'error');
+                return;
+            }
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            this.addNotification('Скачано: ' + filename + ' 📥', 'success');
+        }, 'image/png');
     }
 };
 
@@ -463,9 +501,20 @@ class DrawingEditor {
         this.brushColor = '#000000';
         this.history = [];
         this.historyStep = 0;
+        this.historyLimit = 20;
 
         this.setupCanvas();
         this.setupEventListeners();
+        this.updateHistoryIndicator();
+    }
+
+    // Обновить индикатор истории ↶ step/total ↷
+    updateHistoryIndicator() {
+        const el = document.getElementById('historyIndicator');
+        if (!el) return;
+        const total = this.history.length;
+        const step = this.historyStep;
+        el.textContent = '↶ ' + step + '/' + total + ' ↷';
     }
 
     setupCanvas() {
@@ -558,12 +607,20 @@ class DrawingEditor {
             this.history.length = this.historyStep;
         }
         this.history.push(this.canvas.toDataURL());
+        // Кап истории: отбрасываем самое старое сверх лимита
+        if (this.history.length > this.historyLimit) {
+            const overflow = this.history.length - this.historyLimit;
+            this.history.splice(0, overflow);
+            this.historyStep = Math.max(0, this.historyStep - overflow);
+        }
+        this.updateHistoryIndicator();
     }
 
     undo() {
         if (this.historyStep > 0) {
             this.historyStep--;
             this.loadImageData(this.history[this.historyStep]);
+            this.updateHistoryIndicator();
         }
     }
 
@@ -571,6 +628,7 @@ class DrawingEditor {
         if (this.historyStep < this.history.length - 1) {
             this.historyStep++;
             this.loadImageData(this.history[this.historyStep]);
+            this.updateHistoryIndicator();
         }
     }
 
