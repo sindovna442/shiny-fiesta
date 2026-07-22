@@ -12,6 +12,7 @@ const game = {
     // Система комнат
     currentRoom: 0,
     hoveredItem: null,
+    particles: [],
     rooms: [
         { id: 0, name: '🏠 Гостиная', color: '#1a1a2e', petX: 0.5, petY: 0.55 },
         { id: 1, name: '🍖 Кухня', color: '#2d1810', petX: 0.35, petY: 0.55,
@@ -90,9 +91,114 @@ const game = {
         // Проверяем попадание
         if (x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
             y >= itemY - itemH/2 && y <= itemY + itemH/2) {
+            // Спавним частицы
+            this.spawnParticles(item.type, itemX, itemY);
             // Вызываем действие
             this[item.action]();
         }
+    },
+
+    // Система частиц
+    spawnParticles(type, x, y) {
+        const count = 15;
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
+            const speed = 2 + Math.random() * 4;
+            const life = 40 + Math.random() * 30;
+            
+            let particle = {
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 2,
+                life: life,
+                maxLife: life,
+                size: 4 + Math.random() * 6,
+                type: type
+            };
+            
+            // Разные параметры для разных типов
+            if (type === 'foodBowl') {
+                particle.color = ['#8B5A2B', '#CD853F', '#DEB887', '#A0522D'][Math.floor(Math.random() * 4)];
+                particle.shape = 'circle';
+                particle.vy = Math.sin(angle) * speed - 4;
+            } else if (type === 'bathtub') {
+                particle.color = ['rgba(135,206,250,0.8)', 'rgba(173,216,230,0.9)', 'rgba(255,255,255,0.7)', 'rgba(100,149,237,0.6)'][Math.floor(Math.random() * 4)];
+                particle.shape = 'drop';
+                particle.vy = Math.sin(angle) * speed - 6;
+                particle.size = 3 + Math.random() * 5;
+            } else if (type === 'bed') {
+                particle.color = ['#FFD700', '#FFA500', '#FF69B4', '#DDA0DD', '#FFF'][Math.floor(Math.random() * 5)];
+                particle.shape = 'star';
+                particle.rotation = Math.random() * Math.PI * 2;
+                particle.rotSpeed = (Math.random() - 0.5) * 0.2;
+                particle.vy = Math.sin(angle) * speed - 3;
+            }
+            
+            this.particles.push(particle);
+        }
+    },
+
+    updateAndDrawParticles(ctx) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            
+            // Обновляем позицию
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.15;
+            p.life--;
+            
+            // Удаляем мёртвые частицы
+            if (p.life <= 0) {
+                this.particles.splice(i, 1);
+                continue;
+            }
+            
+            // Рисуем
+            const alpha = p.life / p.maxLife;
+            ctx.globalAlpha = alpha;
+            
+            if (p.shape === 'circle') {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (p.shape === 'drop') {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y - p.size);
+                ctx.quadraticCurveTo(p.x + p.size, p.y, p.x, p.y + p.size * 0.6);
+                ctx.quadraticCurveTo(p.x - p.size, p.y, p.x, p.y - p.size);
+                ctx.fill();
+            } else if (p.shape === 'star') {
+                p.rotation += p.rotSpeed;
+                ctx.fillStyle = p.color;
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+                this.drawStar(ctx, 0, 0, 5, p.size * alpha, p.size * alpha * 0.5);
+                ctx.restore();
+            }
+        }
+        ctx.globalAlpha = 1;
+    },
+
+    drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+        let rot = Math.PI / 2 * 3;
+        let step = Math.PI / spikes;
+        
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - outerRadius);
+        for (let i = 0; i < spikes; i++) {
+            ctx.lineTo(cx + Math.cos(rot) * outerRadius, cy + Math.sin(rot) * outerRadius);
+            rot += step;
+            ctx.lineTo(cx + Math.cos(rot) * innerRadius, cy + Math.sin(rot) * innerRadius);
+            rot += step;
+        }
+        ctx.lineTo(cx, cy - outerRadius);
+        ctx.closePath();
+        ctx.fill();
     },
 
     // Обработка hover по Canvas
@@ -318,6 +424,9 @@ const game = {
         const petX = canvas.width * room.petX;
         const petY = canvas.height * room.petY;
         this.drawDemonCat(ctx, petX, petY);
+        
+        // Рисуем частицы поверх всего
+        this.updateAndDrawParticles(ctx);
     },
 
     // Отрисовка элементов комнаты
