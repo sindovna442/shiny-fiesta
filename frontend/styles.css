@@ -1,13 +1,3 @@
-:root {
-    --primary-color: #ff4444;
-    --secondary-color: #cc0000;
-    --accent-color: #ffaa00;
-    --background: #fff5f0;
-    --text-color: #2c2c2c;
-    --border-color: #ffdddd;
-    --success-color: #66dd00;
-}
-
 * {
     margin: 0;
     padding: 0;
@@ -16,8 +6,7 @@
 
 body {
     font-family: 'Arial', sans-serif;
-    background: linear-gradient(135deg, #ffe6e6 0%, #fff5f0 100%);
-    color: var(--text-color);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     display: flex;
     justify-content: center;
@@ -27,447 +16,500 @@ body {
 
 .container {
     width: 100%;
-    max-width: 800px;
+    max-width: 1000px;
     background: white;
     border-radius: 20px;
-    box-shadow: 0 10px 40px rgba(255, 68, 68, 0.15);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     overflow: hidden;
 }
 
-/* Экраны */
 .screen {
     display: none;
+    padding: 30px;
+    min-height: 800px;
     animation: fadeIn 0.3s ease-in;
-    padding: 20px;
+    flex-direction: column;
 }
 
 .screen.active {
-    display: block;
+    display: flex;
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-/* Заголовок */
+/* ===== ЗАГОЛОВОК ===== */
 .header {
     text-align: center;
     margin-bottom: 20px;
-    border-bottom: 3px solid var(--primary-color);
-    padding-bottom: 15px;
 }
 
 .header h1 {
-    font-size: 2.5em;
-    color: var(--primary-color);
-    margin-bottom: 5px;
+    font-size: 32px;
+    color: #333;
+    margin-bottom: 10px;
 }
 
 .pet-name {
-    font-size: 1.2em;
-    color: var(--secondary-color);
-    font-style: italic;
+    font-size: 18px;
+    color: #666;
 }
 
-/* Контейнер питомца */
-.pet-container {
+/* ===== СИСТЕМА КОМНАТ ===== */
+.rooms-container {
     display: flex;
     justify-content: center;
-    margin: 30px 0;
-    background: var(--background);
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 30px;
+    flex: 1;
+}
+
+.nav-arrow {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 15px 20px;
+    font-size: 24px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.nav-arrow:hover {
+    transform: scale(1.1);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.room-wrapper {
+    flex: 1;
+    max-width: 600px;
+}
+
+.room {
+    position: relative;
     border-radius: 15px;
-    padding: 20px;
-    border: 3px dashed var(--border-color);
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    width: 100%;
 }
 
 #petCanvas {
-    display: block;
-    max-width: 100%;
+    width: 100%;
     height: auto;
+    display: block;
+    border-radius: 15px;
 }
 
-/* Панель показателей */
+.room-elements {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.room-elements > * {
+    pointer-events: auto;
+}
+
+/* ===== КОМНАТЫ - ЦВЕТА ===== */
+.room.room-food {
+    background: linear-gradient(135deg, #FFA500 0%, #FFB84D 100%);
+}
+
+.room.room-wash {
+    background: linear-gradient(135deg, #87CEEB 0%, #4DB8FF 100%);
+}
+
+.room.room-sleep {
+    background: linear-gradient(135deg, #B19CD9 0%, #DDA0DD 100%);
+}
+
+.room.room-pet {
+    background: linear-gradient(135deg, #FFD700 0%, #FFC700 100%);
+}
+
+/* ===== ИНДИКАТОР КОМНАТЫ ===== */
+.room-indicator {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.room-title {
+    font-size: 20px;
+    color: #333;
+    display: block;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.dots {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ddd;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.dot.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    transform: scale(1.2);
+}
+
+/* ===== ПАНЕЛЬ ПОКАЗАТЕЛЕЙ ===== */
 .stats-panel {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(5, 1fr);
     gap: 15px;
-    margin: 25px 0;
+    margin-bottom: 20px;
 }
 
 .stat {
-    background: var(--background);
-    padding: 12px;
+    background: #f5f5f5;
+    padding: 15px;
     border-radius: 10px;
-    border: 2px solid var(--border-color);
+    text-align: center;
 }
 
 .stat label {
     display: block;
-    font-weight: bold;
+    font-size: 14px;
+    color: #666;
     margin-bottom: 8px;
-    font-size: 0.9em;
 }
 
 .stat-bar {
     width: 100%;
     height: 20px;
-    background: #f0f0f0;
+    background: #ddd;
     border-radius: 10px;
     overflow: hidden;
-    border: 1px solid #ddd;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
 }
 
 .stat-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
     width: 50%;
     transition: width 0.3s ease;
 }
 
 .stat span {
-    font-size: 0.85em;
-    color: #666;
-}
-
-/* Кнопки управления */
-.controls {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    margin: 25px 0;
-}
-
-.control-btn {
-    padding: 15px;
-    font-size: 1em;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.3s ease;
+    font-size: 12px;
+    color: #333;
     font-weight: bold;
-    color: white;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
 }
 
-.control-btn span:first-child {
-    font-size: 1.5em;
-}
-
-.feed-btn {
-    background: linear-gradient(135deg, #ff6b6b, #ff4444);
-}
-
-.pet-btn {
-    background: linear-gradient(135deg, #ffa500, #ff8c00);
-}
-
-.wash-btn {
-    background: linear-gradient(135deg, #4ecdc4, #00d4d4);
-}
-
-.sleep-btn {
-    background: linear-gradient(135deg, #9b59b6, #8e44ad);
-}
-
-.control-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-}
-
-.control-btn:active {
-    transform: translateY(0);
-}
-
-/* Навигация */
+/* ===== НАВИГАЦИЯ ===== */
 .navigation {
     display: flex;
     gap: 10px;
-    margin-top: 20px;
+    margin-top: auto;
 }
 
 .nav-btn {
     flex: 1;
-    padding: 12px;
+    padding: 15px;
     border: none;
     border-radius: 10px;
-    font-size: 1em;
+    font-size: 16px;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.3s;
 }
 
 .sketch-btn {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    background: linear-gradient(135deg, #FF6B6B 0%, #FF8E72 100%);
     color: white;
 }
 
-.sketch-btn:hover {
-    transform: scale(1.05);
+.minigames-btn {
+    background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+    color: white;
 }
 
-/* Экран скетчбука */
-.sketch-header {
+.nav-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== ИНТЕРАКТИВНЫЕ ЭЛЕМЕНТЫ КОМНАТ ===== */
+.interactive-item {
+    position: absolute;
+    cursor: grab;
+    transition: all 0.1s;
+}
+
+.interactive-item:active {
+    cursor: grabbing;
+}
+
+/* ===== ЭКРАН СКЕТЧБУКА ===== */
+.sketch-header,
+.editor-header,
+.minigames-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    border-bottom: 3px solid var(--primary-color);
-    padding-bottom: 15px;
+    margin-bottom: 30px;
+}
+
+.sketch-header h2,
+.editor-header h2,
+.minigames-header h2 {
+    flex: 1;
+    text-align: center;
+    font-size: 24px;
+    color: #333;
 }
 
 .back-btn {
-    background: var(--background);
-    border: 2px solid var(--primary-color);
-    padding: 8px 15px;
+    padding: 10px 20px;
+    background: #999;
+    color: white;
+    border: none;
     border-radius: 8px;
     cursor: pointer;
-    font-weight: bold;
-    transition: all 0.3s ease;
+    transition: all 0.3s;
 }
 
 .back-btn:hover {
-    background: var(--primary-color);
-    color: white;
+    background: #777;
+    transform: translateX(-5px);
 }
 
-.sketch-header h2 {
-    color: var(--primary-color);
+.save-btn {
+    padding: 10px 20px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.save-btn:hover {
+    background: #45a049;
+    transform: translateY(-2px);
 }
 
 .sketch-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 15px;
-    margin-top: 20px;
+    gap: 20px;
+    flex: 1;
 }
 
 .create-sketch-btn {
     padding: 30px;
-    background: linear-gradient(135deg, var(--accent-color), #ffcc00);
-    border: 3px dashed var(--border-color);
-    border-radius: 15px;
-    font-size: 1.2em;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: 2px dashed white;
+    border-radius: 10px;
+    font-size: 16px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    font-weight: bold;
-    min-height: 150px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
+    transition: all 0.3s;
 }
 
 .create-sketch-btn:hover {
     transform: scale(1.05);
-    box-shadow: 0 5px 15px rgba(255, 170, 0, 0.3);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 }
 
-.sketch-item {
-    background: var(--background);
-    border: 2px solid var(--border-color);
-    border-radius: 15px;
-    padding: 10px;
-    cursor: pointer;
-    transition: all 0.3s ease;
+.sketch-page {
     position: relative;
-    overflow: hidden;
-    min-height: 150px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-.sketch-item:hover {
-    box-shadow: 0 5px 15px rgba(255, 68, 68, 0.2);
-    transform: translateY(-3px);
-}
-
-.sketch-item-preview {
-    width: 100%;
-    height: 120px;
-    background: white;
-    border-radius: 10px;
-    margin-bottom: 10px;
-    object-fit: cover;
-}
-
-.sketch-item-title {
-    font-weight: bold;
-    text-align: center;
-    font-size: 0.85em;
-    color: var(--secondary-color);
-}
-
-.sketch-item-delete {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    background: rgba(255, 68, 68, 0.8);
-    border: none;
-    color: white;
-    border-radius: 50%;
-    width: 25px;
-    height: 25px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.sketch-item-delete:hover {
-    background: rgba(255, 68, 68, 1);
-}
-
-/* Экран редактора */
-.editor-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    border-bottom: 3px solid var(--primary-color);
-    padding-bottom: 15px;
-}
-
-.editor-header h2 {
-    color: var(--primary-color);
-}
-
-.save-btn {
-    background: linear-gradient(135deg, var(--success-color), #00aa00);
-    color: white;
-    border: none;
-    padding: 10px 20px;
+    border: 3px solid #ddd;
     border-radius: 8px;
+    overflow: hidden;
+    aspect-ratio: 3/4;
     cursor: pointer;
-    font-weight: bold;
-    transition: all 0.3s ease;
+    transition: all 0.3s;
 }
 
-.save-btn:hover {
-    transform: scale(1.05);
+.sketch-page:hover {
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
+.sketch-page canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.sketch-page-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-end;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0);
+    transition: background 0.3s;
+}
+
+.sketch-page:hover .sketch-page-overlay {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.sketch-page-flip {
+    font-size: 24px;
+    cursor: pointer;
+}
+
+/* ===== РЕДАКТОР РИСОВАНИЯ ===== */
 .editor-container {
     display: flex;
-    flex-direction: column;
-    gap: 15px;
+    gap: 20px;
+    flex: 1;
 }
 
 .toolbar {
-    background: var(--background);
-    padding: 15px;
+    width: 200px;
+    background: #f5f5f5;
+    padding: 20px;
     border-radius: 10px;
-    border: 2px solid var(--border-color);
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 15px;
-    align-items: center;
 }
 
 .tool-group {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 10px;
 }
 
 .tool-group label {
     font-weight: bold;
-    font-size: 0.9em;
+    color: #333;
+    font-size: 14px;
 }
 
-.tool-btn,
-.action-btn {
-    padding: 8px 15px;
-    border: 2px solid var(--primary-color);
+.tool-btn {
+    padding: 10px;
     background: white;
+    border: 2px solid #ddd;
     border-radius: 8px;
     cursor: pointer;
-    transition: all 0.2s ease;
-    font-weight: bold;
-}
-
-.tool-btn:hover,
-.action-btn:hover {
-    background: var(--primary-color);
-    color: white;
+    transition: all 0.2s;
 }
 
 .tool-btn.active {
-    background: var(--primary-color);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
+    border-color: transparent;
+}
+
+.tool-btn:hover {
+    transform: translateY(-2px);
 }
 
 #brushSize {
-    width: 100px;
-}
-
-#colorPicker {
-    width: 50px;
-    height: 40px;
-    border: none;
-    border-radius: 5px;
     cursor: pointer;
 }
 
-#sizeDisplay {
-    min-width: 20px;
-    text-align: center;
+#colorPicker {
+    width: 100%;
+    height: 50px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.action-btn {
+    padding: 10px;
+    background: #FF6B6B;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    background: #FF5252;
 }
 
 .canvas-wrapper {
+    flex: 1;
+    background: white;
+    border: 3px dashed #ddd;
+    border-radius: 10px;
+    padding: 10px;
     display: flex;
     justify-content: center;
-    background: var(--background);
-    padding: 15px;
-    border-radius: 10px;
-    border: 2px solid var(--border-color);
+    align-items: center;
 }
 
 #drawingCanvas {
-    background: white;
-    border: 2px solid #ddd;
-    border-radius: 10px;
-    cursor: crosshair;
     max-width: 100%;
-    height: auto;
+    max-height: 100%;
+    border-radius: 8px;
+    cursor: crosshair;
+    background: white;
 }
 
-/* Адаптив */
-@media (max-width: 600px) {
-    .header h1 {
-        font-size: 1.8em;
+/* ===== ЭКРАН МИНИ-ИГР ===== */
+.minigames-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    flex: 1;
+}
+
+.minigame-btn {
+    padding: 30px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.minigame-btn:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+/* ===== АДАПТИВНОСТЬ ===== */
+@media (max-width: 768px) {
+    .rooms-container {
+        flex-direction: column;
     }
 
     .stats-panel {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .controls {
-        grid-template-columns: 1fr;
+    .editor-container {
+        flex-direction: column;
     }
 
     .toolbar {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .tool-group {
         width: 100%;
     }
 
-    #drawingCanvas {
-        width: 100%;
-        height: auto;
+    .room-wrapper {
+        max-width: 100%;
+    }
+
+    #petCanvas {
+        max-height: 400px;
     }
 }
