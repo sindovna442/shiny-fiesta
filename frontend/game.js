@@ -177,6 +177,73 @@ const game = {
         osc.stop(now + 0.35);
     },
 
+    // Звук: попадание по блоку (короткий хай-хэт)
+    playBlockHit() {
+        if (!this.audioCtx) return;
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const now = this.audioCtx.currentTime;
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(200, now + 0.08);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    },
+
+    // Звук: разрушение блока (низкий бум)
+    playExplosion() {
+        if (!this.audioCtx) return;
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const now = this.audioCtx.currentTime;
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(40, now + 0.3);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.35);
+        
+        // Второй тон для насыщенности
+        const osc2 = this.audioCtx.createOscillator();
+        const gain2 = this.audioCtx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(80, now + 0.05);
+        osc2.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+        gain2.gain.setValueAtTime(0.15, now + 0.05);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc2.connect(gain2);
+        gain2.connect(this.audioCtx.destination);
+        osc2.start(now + 0.05);
+        osc2.stop(now + 0.35);
+    },
+
+    // Звук: запуск шаров (свист)
+    playBallLaunch() {
+        if (!this.audioCtx) return;
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const now = this.audioCtx.currentTime;
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.2);
+    },
+
     // Получить случайную реакцию
     getRandomReaction() {
         const reactions = ['angry', 'cute', 'purr'];
@@ -2339,6 +2406,7 @@ const game = {
             }, i * 50);
         });
         
+        this.playBallLaunch();
         this.nonstopLaunched = this.nonstopBalls.length;
     },
 
@@ -2381,12 +2449,48 @@ const game = {
             
             // Столкновения с блоками
             this.nonstopBlocks.forEach((block, bi) => {
-                if (ball.x > block.x && ball.x < block.x + block.w &&
-                    ball.y > block.y && ball.y < block.y + block.h) {
-                    ball.vy *= -1;
+                // Определяем перекрытие шара с блоком по каждой стороне
+                const ballLeft = ball.x - ball.r;
+                const ballRight = ball.x + ball.r;
+                const ballTop = ball.y - ball.r;
+                const ballBot = ball.y + ball.r;
+                
+                if (ballRight > block.x && ballLeft < block.x + block.w &&
+                    ballBot > block.y && ballTop < block.y + block.h) {
+                    
+                    // Вычисляем наложение с каждой стороны
+                    const overlapLeft = (ball.x + ball.r) - block.x;
+                    const overlapRight = (block.x + block.w) - (ball.x - ball.r);
+                    const overlapTop = (ball.y + ball.r) - block.y;
+                    const overlapBottom = (block.y + block.h) - (ball.y - ball.r);
+                    
+                    // Наименьшее наложение определяет сторону удара
+                    const minOverlapX = Math.min(overlapLeft, overlapRight);
+                    const minOverlapY = Math.min(overlapTop, overlapBottom);
+                    
+                    if (minOverlapX < minOverlapY) {
+                        // Удар слева или справа — реверсим vx
+                        ball.vx *= -1;
+                        if (overlapLeft < overlapRight) {
+                            ball.x = block.x - ball.r;
+                        } else {
+                            ball.x = block.x + block.w + ball.r;
+                        }
+                    } else {
+                        // Удар сверху или снизу — реверсим vy
+                        ball.vy *= -1;
+                        if (overlapTop < overlapBottom) {
+                            ball.y = block.y - ball.r;
+                        } else {
+                            ball.y = block.y + block.h + ball.r;
+                        }
+                    }
+                    
+                    this.playBlockHit();
                     block.hp--;
                     if (block.hp <= 0) {
                         this.nonstopBlocks.splice(bi, 1);
+                        this.playExplosion();
                         this.updateScore(10);
                     }
                 }
