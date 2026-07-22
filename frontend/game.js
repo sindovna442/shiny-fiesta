@@ -12,6 +12,7 @@ const game = {
     // Система комнат
     currentRoom: 0,
     hoveredItem: null,
+    dragState: { active: false, type: null, index: -1, offsetX: 0, offsetY: 0, startX: 0, startY: 0 },
     particles: [],
     
     // Система звука
@@ -198,41 +199,124 @@ const game = {
         }
     },
 
-    // Обработчики кликов и hover на Canvas
+    // Обработчики: drag, клик, hover
     setupCanvasEvents() {
         const canvas = document.getElementById('petCanvas');
         if (!canvas) return;
         
-        // Клик по Canvas
-        canvas.addEventListener('click', (e) => {
+        const self = this;
+        
+        // Получить координаты мыши относительно canvas
+        function getCanvasCoords(e) {
             const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            const x = (e.clientX - rect.left) * scaleX;
-            const y = (e.clientY - rect.top) * scaleY;
-            this.handleCanvasClick(x, y);
+            return {
+                x: (e.clientX - rect.left) * (canvas.width / rect.width),
+                y: (e.clientY - rect.top) * (canvas.height / rect.height)
+            };
+        }
+        
+        // === Drag-and-Drop ===
+        let dragMoved = false;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            const { x, y } = getCanvasCoords(e);
+            dragMoved = false;
+            
+            const room = self.rooms[self.currentRoom];
+            
+            // Проверяем клик по коту
+            const petX = canvas.width * room.petX;
+            const petY = canvas.height * room.petY;
+            const scale = self.getPetScale();
+            const catRadius = 70 * scale;
+            const dist = Math.sqrt((x - petX) ** 2 + (y - petY) ** 2);
+            
+            if (dist < catRadius) {
+                self.dragState.active = true;
+                self.dragState.type = 'pet';
+                self.dragState.offsetX = x - petX;
+                self.dragState.offsetY = y - petY;
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+            
+            // Проверяем клик по предмету комнаты
+            if (room.item) {
+                const item = room.item;
+                const itemX = canvas.width * item.x;
+                const itemY = canvas.height * item.y;
+                const itemW = canvas.width * item.w;
+                const itemH = canvas.height * item.h;
+                
+                if (x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
+                    y >= itemY - itemH/2 && y <= itemY + itemH/2) {
+                    self.dragState.active = true;
+                    self.dragState.type = 'item';
+                    self.dragState.offsetX = x - itemX;
+                    self.dragState.offsetY = y - itemY;
+                    canvas.style.cursor = 'grabbing';
+                    return;
+                }
+            }
         });
         
-        // Hover для подсветки предметов (троттлинг 50ms)
-        let lastHoverTime = 0;
         canvas.addEventListener('mousemove', (e) => {
+            const { x, y } = getCanvasCoords(e);
+            
+            if (self.dragState.active) {
+                dragMoved = true;
+                const room = self.rooms[self.currentRoom];
+                
+                if (self.dragState.type === 'pet') {
+                    // Двигаем кота
+                    room.petX = Math.max(0.05, Math.min(0.95, (x - self.dragState.offsetX) / canvas.width));
+                    room.petY = Math.max(0.1, Math.min(0.9, (y - self.dragState.offsetY) / canvas.height));
+                } else if (self.dragState.type === 'item' && room.item) {
+                    // Двигаем предмет
+                    room.item.x = Math.max(0.05, Math.min(0.95, (x - self.dragState.offsetX) / canvas.width));
+                    room.item.y = Math.max(0.05, Math.min(0.95, (y - self.dragState.offsetY) / canvas.height));
+                }
+                
+                self.drawPet();
+                return;
+            }
+            
+            // Hover (троттлинг 50ms)
             const now = Date.now();
-            if (now - lastHoverTime < 50) return; // ← троттлинг: не чаще 20 раз/сек
-            lastHoverTime = now;
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            const x = (e.clientX - rect.left) * scaleX;
-            const y = (e.clientY - rect.top) * scaleY;
-            this.handleCanvasHover(x, y, canvas);
+            if (now - self._lastHoverTime < 50) return;
+            self._lastHoverTime = now;
+            self.handleCanvasHover(x, y, canvas);
+        });
+        
+        canvas.addEventListener('mouseup', (e) => {
+            if (!self.dragState.active) return;
+            
+            self.dragState.active = false;
+            self.dragState.type = null;
+            canvas.style.cursor = 'default';
+            
+            // Если не было движения — это клик, а не drag
+            if (!dragMoved) {
+                const { x, y } = getCanvasCoords(e);
+                self.handleCanvasClick(x, y);
+            }
         });
         
         // Сброс hover при уходе курсора
         canvas.addEventListener('mouseleave', () => {
-            this.hoveredItem = null;
+            self.hoveredItem = null;
             canvas.style.cursor = 'default';
-            this.drawPet();
+            if (!self.dragState.active) {
+                self.drawPet();
+            } else {
+                self.dragState.active = false;
+                self.dragState.type = null;
+                self.drawPet();
+            }
         });
+        
+        this._lastHoverTime = 0;
     },
 
     // Обработка клика по Canvas
