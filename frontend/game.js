@@ -11,11 +11,15 @@ const game = {
     
     // Система комнат
     currentRoom: 0,
+    hoveredItem: null,
     rooms: [
         { id: 0, name: '🏠 Гостиная', color: '#1a1a2e', petX: 0.5, petY: 0.55 },
-        { id: 1, name: '🍖 Кухня', color: '#2d1810', petX: 0.45, petY: 0.6 },
-        { id: 2, name: '🛁 Ванная', color: '#1a2e3e', petX: 0.55, petY: 0.5 },
-        { id: 3, name: '😴 Спальня', color: '#1e1a2e', petX: 0.5, petY: 0.58 }
+        { id: 1, name: '🍖 Кухня', color: '#2d1810', petX: 0.35, petY: 0.55,
+          item: { type: 'foodBowl', x: 0.7, y: 0.72, w: 0.18, h: 0.15, label: 'Нажми, чтобы покормить', action: 'feedPet' } },
+        { id: 2, name: '🛁 Ванная', color: '#1a2e3e', petX: 0.35, petY: 0.48,
+          item: { type: 'bathtub', x: 0.62, y: 0.65, w: 0.25, h: 0.22, label: 'Нажми, чтобы искупать', action: 'washPet' } },
+        { id: 3, name: '😴 Спальня', color: '#1e1a2e', petX: 0.3, petY: 0.55,
+          item: { type: 'bed', x: 0.6, y: 0.6, w: 0.28, h: 0.25, label: 'Нажми, чтобы уложить спать', action: 'sleepPet' } }
     ],
 
     // Инициализация игры
@@ -28,11 +32,93 @@ const game = {
         // Инициализируем редактор рисования
         this.editor = new DrawingEditor();
         
+        // Инициализируем обработчики Canvas
+        this.setupCanvasEvents();
+        
         // Обновляем состояние каждые 2 секунды
         this.startGameLoop();
         
         // Обновляем UI
         this.updateUI();
+    },
+
+    // Обработчики кликов и hover на Canvas
+    setupCanvasEvents() {
+        const canvas = document.getElementById('petCanvas');
+        if (!canvas) return;
+        
+        // Клик по Canvas
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            this.handleCanvasClick(x, y);
+        });
+        
+        // Hover для подсветки предметов
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            this.handleCanvasHover(x, y, canvas);
+        });
+        
+        // Сброс hover при уходе курсора
+        canvas.addEventListener('mouseleave', () => {
+            this.hoveredItem = null;
+            canvas.style.cursor = 'default';
+            this.drawPet();
+        });
+    },
+
+    // Обработка клика по Canvas
+    handleCanvasClick(x, y) {
+        const room = this.rooms[this.currentRoom];
+        if (!room.item) return;
+        
+        const item = room.item;
+        const canvas = document.getElementById('petCanvas');
+        const itemX = canvas.width * item.x;
+        const itemY = canvas.height * item.y;
+        const itemW = canvas.width * item.w;
+        const itemH = canvas.height * item.h;
+        
+        // Проверяем попадание
+        if (x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
+            y >= itemY - itemH/2 && y <= itemY + itemH/2) {
+            // Вызываем действие
+            this[item.action]();
+        }
+    },
+
+    // Обработка hover по Canvas
+    handleCanvasHover(x, y, canvas) {
+        const room = this.rooms[this.currentRoom];
+        if (!room.item) {
+            this.hoveredItem = null;
+            canvas.style.cursor = 'default';
+            return;
+        }
+        
+        const item = room.item;
+        const itemX = canvas.width * item.x;
+        const itemY = canvas.height * item.y;
+        const itemW = canvas.width * item.w;
+        const itemH = canvas.height * item.h;
+        
+        if (x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
+            y >= itemY - itemH/2 && y <= itemY + itemH/2) {
+            this.hoveredItem = item.type;
+            canvas.style.cursor = 'pointer';
+        } else {
+            this.hoveredItem = null;
+            canvas.style.cursor = 'default';
+        }
+        this.drawPet();
     },
 
     // Создать нового питомца
@@ -225,10 +311,219 @@ const game = {
         ctx.fillStyle = room.color;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
+        // Рисуем элементы комнаты (ПЕРЕД питомцем, но на фоне)
+        this.drawRoomElements(ctx, canvas.width, canvas.height);
+        
         // Рисуем демон-кота в позиции комнаты
         const petX = canvas.width * room.petX;
         const petY = canvas.height * room.petY;
         this.drawDemonCat(ctx, petX, petY);
+    },
+
+    // Отрисовка элементов комнаты
+    drawRoomElements(ctx, w, h) {
+        const room = this.rooms[this.currentRoom];
+        if (!room.item) return;
+        
+        const item = room.item;
+        const cx = w * item.x;
+        const cy = h * item.y;
+        const isHovered = this.hoveredItem === item.type;
+        
+        ctx.save();
+        
+        if (item.type === 'foodBowl') {
+            this.drawFoodBowl(ctx, cx, cy, w * 0.08, isHovered);
+        } else if (item.type === 'bathtub') {
+            this.drawBathtub(ctx, cx, cy, w * 0.12, isHovered);
+        } else if (item.type === 'bed') {
+            this.drawBed(ctx, cx, cy, w * 0.14, isHovered);
+        }
+        
+        // Подсказка при hover
+        if (isHovered) {
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            const textW = ctx.measureText(item.label).width + 20;
+            ctx.beginPath();
+            ctx.roundRect(cx - textW/2, cy - h * 0.15 - 25, textW, 24, 8);
+            ctx.fill();
+            ctx.fillStyle = '#333';
+            ctx.fillText(item.label, cx, cy - h * 0.15 - 10);
+        }
+        
+        ctx.restore();
+    },
+
+    // Миска с едой
+    drawFoodBowl(ctx, x, y, r, hovered) {
+        const bounce = hovered ? Math.sin(Date.now() / 100) * 3 : 0;
+        
+        // Тень
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + r * 0.8, r * 1.1, r * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Миска (внешняя часть — тёмная)
+        ctx.fillStyle = '#8B4513';
+        ctx.beginPath();
+        ctx.ellipse(x, y + bounce, r * 1.1, r * 0.5, 0, 0, Math.PI);
+        ctx.fill();
+        
+        // Миска (внутренняя часть — красная)
+        ctx.fillStyle = '#CC3333';
+        ctx.beginPath();
+        ctx.ellipse(x, y + bounce, r * 0.9, r * 0.35, 0, 0, Math.PI);
+        ctx.fill();
+        
+        // Еда (корм — коричневые кусочки)
+        ctx.fillStyle = '#8B5A2B';
+        for (let i = 0; i < 5; i++) {
+            ctx.beginPath();
+            ctx.arc(x - r * 0.5 + i * r * 0.25, y + r * 0.1 + bounce, r * 0.12, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Подсветка при hover
+        if (hovered) {
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(x, y + bounce, r * 1.3, r * 0.65, 0, 0, Math.PI);
+            ctx.stroke();
+        }
+    },
+
+    // Ванна
+    drawBathtub(ctx, x, y, r, hovered) {
+        const bubbleFloat = Math.sin(Date.now() / 600) * 2;
+        
+        // Тень
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + r * 0.9, r * 1.3, r * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Ванна (тело — белая)
+        ctx.fillStyle = '#F5F5F5';
+        ctx.beginPath();
+        ctx.ellipse(x, y, r * 1.2, r * 0.7, 0, 0, Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#DDD';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // Край ванны
+        ctx.fillStyle = '#FFF';
+        ctx.beginPath();
+        ctx.ellipse(x, y, r * 1.2, r * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#CCC';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Вода (голубая)
+        ctx.fillStyle = 'rgba(135, 206, 250, 0.6)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + r * 0.1, r * 1, r * 0.45, 0, 0, Math.PI);
+        ctx.fill();
+        
+        // Пузырьки
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        const bubbles = [
+            { bx: -0.4, by: -0.2, br: 0.08 },
+            { bx: -0.1, by: -0.35, br: 0.06 },
+            { bx: 0.2, by: -0.25, br: 0.1 },
+            { bx: 0.4, by: -0.3, br: 0.05 },
+            { bx: 0.0, by: -0.15, br: 0.07 }
+        ];
+        bubbles.forEach(b => {
+            ctx.beginPath();
+            ctx.arc(x + r * b.bx, y + r * b.by + bubbleFloat, r * b.br, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        
+        // Краник
+        ctx.fillStyle = '#AAA';
+        ctx.fillRect(x + r * 0.8, y - r * 0.8, r * 0.15, r * 0.5);
+        ctx.fillStyle = '#888';
+        ctx.beginPath();
+        ctx.arc(x + r * 0.875, y - r * 0.8, r * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Подсветка при hover
+        if (hovered) {
+            ctx.strokeStyle = '#87CEEB';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(x, y, r * 1.4, r * 0.85, 0, 0, Math.PI);
+            ctx.stroke();
+        }
+    },
+
+    // Кровать
+    drawBed(ctx, x, y, r, hovered) {
+        const pillowBounce = Math.sin(Date.now() / 1000) * 1;
+        
+        // Тень
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + r * 0.85, r * 1.4, r * 0.12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Каркас кровати (деревянный)
+        ctx.fillStyle = '#8B4513';
+        ctx.beginPath();
+        ctx.roundRect(x - r * 1.3, y - r * 0.3, r * 2.6, r * 1, 8);
+        ctx.fill();
+        
+        // Матрас (синий)
+        ctx.fillStyle = '#4A90D9';
+        ctx.beginPath();
+        ctx.roundRect(x - r * 1.15, y - r * 0.2, r * 2.3, r * 0.75, 6);
+        ctx.fill();
+        
+        // Подушка (белая)
+        ctx.fillStyle = '#FFF';
+        ctx.beginPath();
+        ctx.ellipse(x - r * 0.7, y - r * 0.1 + pillowBounce, r * 0.35, r * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#EEE';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        // Одеяло (тёмно-синее)
+        ctx.fillStyle = '#2C5F8A';
+        ctx.beginPath();
+        ctx.roundRect(x - r * 0.2, y - r * 0.15, r * 1.4, r * 0.65, 5);
+        ctx.fill();
+        
+        // Узор на одеяле
+        ctx.strokeStyle = '#3A7AB5';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x + r * 0.0 + i * r * 0.4, y);
+            ctx.lineTo(x + r * 0.0 + i * r * 0.4, y + r * 0.4);
+            ctx.stroke();
+        }
+        
+        // Изголовье
+        ctx.fillStyle = '#6B3410';
+        ctx.beginPath();
+        ctx.roundRect(x - r * 1.3, y - r * 0.5, r * 0.2, r * 0.8, [4, 0, 0, 4]);
+        ctx.fill();
+        
+        // Подсветка при hover
+        if (hovered) {
+            ctx.strokeStyle = '#B19CD9';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.roundRect(x - r * 1.45, y - r * 0.55, r * 2.9, r * 1.3, 10);
+            ctx.stroke();
+        }
     },
 
     // Функция для рисования кота (3 слоя)
