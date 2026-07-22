@@ -25,9 +25,9 @@ const game = {
         { id: 1, name: '🍖 Кухня', color: '#2d1810', petX: 0.35, petY: 0.55,
           item: { type: 'foodBowl', x: 0.7, y: 0.72, w: 0.18, h: 0.15, label: 'Нажми, чтобы покормить', action: 'feedPet' } },
         { id: 2, name: '🛁 Ванная', color: '#1a2e3e', petX: 0.35, petY: 0.48,
-          item: { type: 'bathtub', x: 0.62, y: 0.65, w: 0.25, h: 0.22, label: 'Нажми, чтобы искупать', action: 'washPet' } },
+          item: { type: 'bathtub', x: 0.62, y: 0.65, w: 0.25, h: 0.22, label: 'Нажми, чтобы войти/выйти из ванны', action: 'toggleBath' } },
         { id: 3, name: '😴 Спальня', color: '#1e1a2e', petX: 0.3, petY: 0.55,
-          item: { type: 'bed', x: 0.6, y: 0.6, w: 0.28, h: 0.25, label: 'Нажми, чтобы уложить спать', action: 'sleepPet' } }
+          item: { type: 'bed', x: 0.6, y: 0.6, w: 0.28, h: 0.25, label: 'Нажми, чтобы лечь/встать', action: 'toggleBed' } }
     ],
 
     // Инициализация игры
@@ -250,7 +250,11 @@ const game = {
             
             if (x >= itemX - itemW/2 && x <= itemX + itemW/2 &&
                 y >= itemY - itemH/2 && y <= itemY + itemH/2) {
-                this.spawnParticles(item.type, itemX, itemY);
+                // Для toggle-предметов (ванна, кровать) не спавним частицы при клике
+                // — они появятся при соответствующем действии
+                if (item.action !== 'toggleBath' && item.action !== 'toggleBed') {
+                    this.spawnParticles(item.type, itemX, itemY);
+                }
                 this[item.action]();
                 return;
             }
@@ -268,26 +272,26 @@ const game = {
             // Гладим кота!
             this.petPet();
             this.triggerReaction();
-            this.spawnHeartParticles(petX, petY - 30 * scale);
+            this.spawnHeartParticles(petX, petY - 120 * scale);
         }
     },
 
-    // Система частиц для сердечек
+    // Система частиц для сердечек (над головой, полупрозрачные)
     spawnHeartParticles(x, y) {
-        for (let i = 0; i < 5; i++) {
-            const angle = -Math.PI/2 + (Math.random() - 0.5) * Math.PI;
-            const speed = 1 + Math.random() * 2;
+        for (let i = 0; i < 6; i++) {
+            const angle = -Math.PI/2 + (Math.random() - 0.5) * Math.PI * 0.8;
+            const speed = 0.8 + Math.random() * 1.5;
             
             this.particles.push({
-                x: x + (Math.random() - 0.5) * 40,
-                y: y,
+                x: x + (Math.random() - 0.5) * 60,
+                y: y - 50 + (Math.random() - 0.5) * 20,
                 vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed - 1,
-                life: 50 + Math.random() * 20,
-                maxLife: 70,
-                size: 8 + Math.random() * 6,
+                vy: Math.sin(angle) * speed - 0.5,
+                life: 35 + Math.random() * 15,
+                maxLife: 50,
+                size: 7 + Math.random() * 5,
                 type: 'heart',
-                color: ['#FF6B6B', '#FF69B4', '#FF1493', '#FFB6C1'][Math.floor(Math.random() * 4)],
+                color: ['rgba(255,107,107,0.6)', 'rgba(255,105,180,0.5)', 'rgba(255,20,147,0.4)', 'rgba(255,182,193,0.6)'][Math.floor(Math.random() * 4)],
                 rotation: (Math.random() - 0.5) * 0.3,
                 rotSpeed: (Math.random() - 0.5) * 0.05
             });
@@ -455,7 +459,7 @@ const game = {
         }
     },
 
-    // Кормить питомца
+    // Кормить питомца — берёт еду, через 2 секунды съедает
     async feedPet() {
         try {
             const response = await fetch(`${API_BASE}/pet/${this.petId}/feed`, {
@@ -463,8 +467,25 @@ const game = {
             });
             const data = await response.json();
             this.pet = data.pet;
-            this.addNotification('Кот наслаждается едой! 😋', 'feed');
+            this.addNotification('Кот взял еду! 🍖', 'feed');
             this.updateUI();
+            
+            // Через 2 секунды съедает
+            setTimeout(async () => {
+                if (!this.pet || !this.pet.is_eating) return;
+                try {
+                    const eatResponse = await fetch(`${API_BASE}/pet/${this.petId}/eat`, {
+                        method: 'POST'
+                    });
+                    const eatData = await eatResponse.json();
+                    this.pet = eatData.pet;
+                    this.addNotification('Кот съел всю еду! 😋', 'feed');
+                    this.spawnParticles('foodBowl', 0, 0);
+                    this.updateUI();
+                } catch (e) {
+                    console.error('Error eating:', e);
+                }
+            }, 2000);
         } catch (error) {
             console.error('Error feeding pet:', error);
         }
@@ -485,33 +506,45 @@ const game = {
         }
     },
 
-    // Мыть питомца
-    async washPet() {
+    // Тоггл ванны — войти/выйти
+    async toggleBath() {
         try {
-            const response = await fetch(`${API_BASE}/pet/${this.petId}/wash`, {
+            const response = await fetch(`${API_BASE}/pet/${this.petId}/bath-toggle`, {
                 method: 'POST'
             });
             const data = await response.json();
             this.pet = data.pet;
-            this.addNotification('Кот принял ванну! Теперь он чище 🛁', 'wash');
+            
+            if (this.pet.in_bath) {
+                this.addNotification('Кот залез в ванну! 🛁', 'wash');
+            } else {
+                this.addNotification('Кот вылез из ванны! Чистота +30 🧼', 'wash');
+                this.spawnParticles('bathtub', 0, 0);
+            }
             this.updateUI();
         } catch (error) {
-            console.error('Error washing pet:', error);
+            console.error('Error toggling bath:', error);
         }
     },
 
-    // Уложить питомца спать
-    async sleepPet() {
+    // Тоггл кровати — лечь/встать
+    async toggleBed() {
         try {
-            const response = await fetch(`${API_BASE}/pet/${this.petId}/sleep`, {
+            const response = await fetch(`${API_BASE}/pet/${this.petId}/bed-toggle`, {
                 method: 'POST'
             });
             const data = await response.json();
             this.pet = data.pet;
-            this.addNotification('Кот сладко спит... Zzz 💤', 'sleep');
+            
+            if (this.pet.in_bed) {
+                this.addNotification('Кот лёг спать... Zzz 💤', 'sleep');
+            } else {
+                this.addNotification('Кот проснулся! Энергия +20 ⚡', 'sleep');
+                this.spawnParticles('bed', 0, 0);
+            }
             this.updateUI();
         } catch (error) {
-            console.error('Error putting pet to sleep:', error);
+            console.error('Error toggling bed:', error);
         }
     },
 
@@ -1183,8 +1216,8 @@ const game = {
             ctx.globalAlpha = 1;
         }
         
-        // Спальный пузырь
-        if (this.pet.energy < 30) {
+        // Спальный пузырь (кот в кровати или мало энергии)
+        if (this.pet.in_bed || this.pet.energy < 30) {
             ctx.fillStyle = 'rgba(100, 100, 100, 0.7)';
             const bubbleY = y - 140 * scale;
             ctx.beginPath();
