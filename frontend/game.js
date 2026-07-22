@@ -1225,9 +1225,10 @@ const game = {
         setTimeout(() => notification.remove(), 3000);
     },
 
-    // ===== СКЕТЧБУК-БЛОКНОТ =====
+    // ===== СКЕТЧБУК =====
     sketchPages: [],
     currentPageIndex: 0,
+    isFlipping: false,
     
     // Навигация на скетчбук
     goToSketch() {
@@ -1249,95 +1250,118 @@ const game = {
         }
     },
 
-    // Отрисовать текущую страницу блокнота
+    // Отрисовать две страницы блокнота
     renderNotebookPage() {
-        const canvas = document.getElementById('notebookCanvas');
-        const titleEl = document.getElementById('pageTitle');
-        const dateEl = document.getElementById('pageDate');
-        const numberEl = document.getElementById('pageNumber');
+        const leftCanvas = document.getElementById('leftCanvas');
+        const rightCanvas = document.getElementById('rightCanvas');
+        const leftLabel = document.getElementById('leftLabel');
+        const rightLabel = document.getElementById('rightLabel');
+        const leftDate = document.getElementById('leftDate');
+        const rightDate = document.getElementById('rightDate');
+        const pagesInfo = document.getElementById('pagesInfo');
         const prevBtn = document.querySelector('.notebook-nav.prev');
         const nextBtn = document.querySelector('.notebook-nav.next');
         
+        this.renderSinglePage(leftCanvas, leftLabel, leftDate, this.currentPageIndex);
+        this.renderSinglePage(rightCanvas, rightLabel, rightDate, this.currentPageIndex + 1);
+        
+        const total = this.sketchPages.length;
+        const displayPage = total > 0 ? this.currentPageIndex + 1 : 0;
+        const totalPages = total > 0 ? Math.ceil(total / 2) : 0;
+        pagesInfo.textContent = total > 0 ? `Страница ${Math.ceil(displayPage / 2)} / ${totalPages}` : 'Нет страниц';
+        
+        prevBtn.disabled = this.currentPageIndex <= 0;
+        nextBtn.disabled = this.currentPageIndex >= total - 1;
+    },
+
+    renderSinglePage(canvas, labelEl, dateEl, pageIndex) {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         
-        // Очищаем
-        ctx.fillStyle = '#fffef8';
+        // Пустая страница
+        ctx.fillStyle = '#fffeff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Линии тетради
-        ctx.strokeStyle = '#e8e4d4';
+        // Декоративная рамка страницы
+        ctx.strokeStyle = '#e8e0d0';
         ctx.lineWidth = 1;
-        for (let y = 40; y < canvas.height; y += 25) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(canvas.width, y);
-            ctx.stroke();
-        }
+        ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
         
-        if (this.sketchPages.length === 0 || !this.sketchPages[this.currentPageIndex]) {
-            // Пустая страница
-            ctx.fillStyle = '#ccc';
-            ctx.font = '20px Arial';
+        if (!this.sketchPages[pageIndex]) {
+            ctx.fillStyle = '#ddd';
+            ctx.font = '18px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('Нет рисунков', canvas.width/2, canvas.height/2 - 20);
-            ctx.font = '16px Arial';
-            ctx.fillText('Нажмите «➕ Новая страница»', canvas.width/2, canvas.height/2 + 15);
-            
-            titleEl.textContent = 'Пустая страница';
+            ctx.textBaseline = 'middle';
+            if (pageIndex === 0) {
+                ctx.fillText('➕ Новая страница', canvas.width / 2, canvas.height / 2);
+            }
+            labelEl.textContent = pageIndex === 0 ? '— пусто —' : '';
             dateEl.textContent = '';
-            numberEl.textContent = '0 / 0';
-            prevBtn.disabled = true;
-            nextBtn.disabled = true;
             return;
         }
         
-        const page = this.sketchPages[this.currentPageIndex];
-        
-        // Загружаем рисунок
+        const page = this.sketchPages[pageIndex];
         const img = new Image();
         img.onload = () => {
-            // Рисуем с отступами как в блокноте
-            const padding = 20;
-            const maxW = canvas.width - padding * 2;
-            const maxH = canvas.height - 80;
+            const pad = 15;
+            const maxW = canvas.width - pad * 2;
+            const maxH = canvas.height - pad * 2;
             const scale = Math.min(maxW / img.width, maxH / img.height);
             const w = img.width * scale;
             const h = img.height * scale;
             const x = (canvas.width - w) / 2;
             const y = (canvas.height - h) / 2;
             
-            // Тень под рисунком
-            ctx.fillStyle = 'rgba(0,0,0,0.05)';
-            ctx.fillRect(x + 5, y + 5, w, h);
-            
+            // Мягкая тень
+            ctx.shadowColor = 'rgba(0,0,0,0.1)';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
             ctx.drawImage(img, x, y, w, h);
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
             
             // Рамка
             ctx.strokeStyle = '#ddd';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
         };
         img.src = page.imageData;
         
-        titleEl.textContent = page.title || 'Без названия';
-        dateEl.textContent = page.created_at ? new Date(page.created_at).toLocaleString('ru-RU') : '';
-        numberEl.textContent = `${this.currentPageIndex + 1} / ${this.sketchPages.length}`;
-        
-        prevBtn.disabled = this.currentPageIndex <= 0;
-        nextBtn.disabled = this.currentPageIndex >= this.sketchPages.length - 1;
+        labelEl.textContent = page.title || 'Без названия';
+        dateEl.textContent = page.created_at
+            ? new Date(page.created_at).toLocaleDateString('ru-RU')
+            : '';
     },
 
-    // Перелистывание страниц
+    // Перелистывание — анимируем правую/левую страницу
     flipPage(newIndex) {
-        const page = document.getElementById('notebookPage');
-        page.classList.add('flipping');
+        if (this.isFlipping) return;
+        this.isFlipping = true;
+        
+        const direction = newIndex > this.currentPageIndex ? 'next' : 'prev';
+        const rightPageEl = document.getElementById('rightPage');
+        const leftPageEl = document.getElementById('leftPage');
+        
+        rightPageEl.classList.remove('flip-out');
+        leftPageEl.classList.remove('flip-out');
+        
+        void rightPageEl.offsetWidth;
+        void leftPageEl.offsetWidth;
+        
+        if (direction === 'next') {
+            rightPageEl.classList.add('flip-out');
+        } else {
+            leftPageEl.classList.add('flip-out');
+        }
         
         setTimeout(() => {
             this.currentPageIndex = newIndex;
             this.renderNotebookPage();
-            page.classList.remove('flipping');
-        }, 250);
+            rightPageEl.classList.remove('flip-out');
+            leftPageEl.classList.remove('flip-out');
+            this.isFlipping = false;
+        }, 500);
     },
 
     nextPage() {
