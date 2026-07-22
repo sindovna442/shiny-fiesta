@@ -1203,20 +1203,197 @@ const game = {
         setTimeout(() => notification.remove(), 3000);
     },
 
+    // ===== СКЕТЧБУК-БЛОКНОТ =====
+    sketchPages: [],
+    currentPageIndex: 0,
+    
     // Навигация на скетчбук
     goToSketch() {
         this.switchScreen('sketchScreen');
-        this.loadSketches();
+        this.loadNotebookPages();
     },
 
-    // Вернуться в главное меню
-    backToMain() {
-        this.switchScreen('mainScreen');
+    // Загрузить страницы блокнота
+    async loadNotebookPages() {
+        try {
+            const response = await fetch(`${API_BASE}/sketches/${this.petId}`);
+            const data = await response.json();
+            this.sketchPages = data.sketches || [];
+            this.renderNotebookPage();
+        } catch (error) {
+            console.error('Error loading notebook pages:', error);
+            this.sketchPages = [];
+            this.renderNotebookPage();
+        }
     },
 
-    // Вернуться к списку скетчей
+    // Отрисовать текущую страницу блокнота
+    renderNotebookPage() {
+        const canvas = document.getElementById('notebookCanvas');
+        const titleEl = document.getElementById('pageTitle');
+        const dateEl = document.getElementById('pageDate');
+        const numberEl = document.getElementById('pageNumber');
+        const prevBtn = document.querySelector('.notebook-nav.prev');
+        const nextBtn = document.querySelector('.notebook-nav.next');
+        
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        
+        // Очищаем
+        ctx.fillStyle = '#fffef8';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Линии тетради
+        ctx.strokeStyle = '#e8e4d4';
+        ctx.lineWidth = 1;
+        for (let y = 40; y < canvas.height; y += 25) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+        
+        if (this.sketchPages.length === 0 || !this.sketchPages[this.currentPageIndex]) {
+            // Пустая страница
+            ctx.fillStyle = '#ccc';
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Нет рисунков', canvas.width/2, canvas.height/2 - 20);
+            ctx.font = '16px Arial';
+            ctx.fillText('Нажмите «➕ Новая страница»', canvas.width/2, canvas.height/2 + 15);
+            
+            titleEl.textContent = 'Пустая страница';
+            dateEl.textContent = '';
+            numberEl.textContent = '0 / 0';
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            return;
+        }
+        
+        const page = this.sketchPages[this.currentPageIndex];
+        
+        // Загружаем рисунок
+        const img = new Image();
+        img.onload = () => {
+            // Рисуем с отступами как в блокноте
+            const padding = 20;
+            const maxW = canvas.width - padding * 2;
+            const maxH = canvas.height - 80;
+            const scale = Math.min(maxW / img.width, maxH / img.height);
+            const w = img.width * scale;
+            const h = img.height * scale;
+            const x = (canvas.width - w) / 2;
+            const y = (canvas.height - h) / 2;
+            
+            // Тень под рисунком
+            ctx.fillStyle = 'rgba(0,0,0,0.05)';
+            ctx.fillRect(x + 5, y + 5, w, h);
+            
+            ctx.drawImage(img, x, y, w, h);
+            
+            // Рамка
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+        };
+        img.src = page.imageData;
+        
+        titleEl.textContent = page.title || 'Без названия';
+        dateEl.textContent = page.created_at ? new Date(page.created_at).toLocaleString('ru-RU') : '';
+        numberEl.textContent = `${this.currentPageIndex + 1} / ${this.sketchPages.length}`;
+        
+        prevBtn.disabled = this.currentPageIndex <= 0;
+        nextBtn.disabled = this.currentPageIndex >= this.sketchPages.length - 1;
+    },
+
+    // Перелистывание страниц
+    flipPage(newIndex) {
+        const page = document.getElementById('notebookPage');
+        page.classList.add('flipping');
+        
+        setTimeout(() => {
+            this.currentPageIndex = newIndex;
+            this.renderNotebookPage();
+            page.classList.remove('flipping');
+        }, 250);
+    },
+
+    nextPage() {
+        if (this.currentPageIndex < this.sketchPages.length - 1) {
+            this.flipPage(this.currentPageIndex + 1);
+        }
+    },
+
+    prevPage() {
+        if (this.currentPageIndex > 0) {
+            this.flipPage(this.currentPageIndex - 1);
+        }
+    },
+
+    // Новая страница из блокнота
+    newSketchFromNotebook() {
+        this.currentSketchId = null;
+        this.editor = new DrawingEditor();
+        this.switchScreen('editorScreen');
+    },
+
+    // Редактировать текущую страницу
+    editCurrentPage() {
+        if (!this.sketchPages[this.currentPageIndex]) return;
+        const page = this.sketchPages[this.currentPageIndex];
+        this.currentSketchId = page.id;
+        this.editor = new DrawingEditor();
+        this.editor.loadImage(page.imageData);
+        this.switchScreen('editorScreen');
+    },
+
+    // Удалить текущую страницу
+    async deleteCurrentPage() {
+        if (!this.sketchPages[this.currentPageIndex]) return;
+        if (!confirm('Удалить эту страницу?')) return;
+        
+        const page = this.sketchPages[this.currentPageIndex];
+        try {
+            await fetch(`${API_BASE}/sketches/${this.petId}/${page.id}`, { method: 'DELETE' });
+            if (this.currentPageIndex >= this.sketchPages.length - 1 && this.currentPageIndex > 0) {
+                this.currentPageIndex--;
+            }
+            await this.loadNotebookPages();
+            this.addNotification('Страница удалена 🗑️', 'info');
+        } catch (error) {
+            console.error('Error deleting page:', error);
+        }
+    },
+
+    // Скачать текущую страницу
+    exportCurrentPage() {
+        if (!this.sketchPages[this.currentPageIndex]) return;
+        const page = this.sketchPages[this.currentPageIndex];
+        const link = document.createElement('a');
+        link.href = page.imageData;
+        link.download = (page.title || 'sketch') + '.png';
+        link.click();
+        this.addNotification('Скачано! 📥', 'success');
+    },
+
+    // Вернуться из редактора в блокнот
     backToSketchList() {
         this.switchScreen('sketchScreen');
+        this.loadNotebookPages();
+    },
+
+    // ===== МИНИ-ИГРЫ =====
+    currentGame: null,
+    gameScore: 0,
+    gameAnimFrame: null,
+    
+    // Вернуться в главное меню
+    backToMain() {
+        if (this.gameAnimFrame) {
+            cancelAnimationFrame(this.gameAnimFrame);
+            this.gameAnimFrame = null;
+        }
+        this.switchScreen('mainScreen');
     },
 
     // Перейти к мини-играм
@@ -1224,9 +1401,592 @@ const game = {
         this.switchScreen('minigamesScreen');
     },
 
-    // Запустить мини-игру (заглушка)
+    // Выйти из мини-игры
+    exitMinigame() {
+        if (this.gameAnimFrame) {
+            cancelAnimationFrame(this.gameAnimFrame);
+            this.gameAnimFrame = null;
+        }
+        this.currentGame = null;
+        this.switchScreen('minigamesScreen');
+    },
+
+    // Запустить мини-игру
     startMinigame(gameName) {
-        this.addNotification(`Мини-игра "${gameName}" скоро будет! 🎮`, 'info');
+        this.gameScore = 0;
+        this.currentGame = gameName;
+        document.getElementById('gameScore').textContent = '0';
+        this.switchScreen('gameScreen');
+        
+        if (gameName === 'sudoku') {
+            document.getElementById('gameTitle').textContent = '🔢 Судоку';
+            this.initSudoku();
+        } else if (gameName === 'chess') {
+            document.getElementById('gameTitle').textContent = '♟️ Шахматы';
+            this.initChess();
+        } else if (gameName === 'nonstop') {
+            document.getElementById('gameTitle').textContent = '🎯 Nonstop Balls';
+            this.initNonstopBalls();
+        }
+    },
+
+    updateScore(points) {
+        this.gameScore += points;
+        document.getElementById('gameScore').textContent = this.gameScore;
+    },
+
+    // ===== СУДОКУ =====
+    sudokuBoard: [],
+    sudokuSolution: [],
+    sudokuSelected: null,
+    
+    initSudoku() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 450;
+        canvas.height = 450;
+        
+        // Генерируем решение
+        this.sudokuSolution = this.generateSudoku();
+        
+        // Убираем цифры для головоломки
+        this.sudokuBoard = this.sudokuSolution.map(row => [...row]);
+        const cellsToRemove = 40;
+        let removed = 0;
+        while (removed < cellsToRemove) {
+            const r = Math.floor(Math.random() * 9);
+            const c = Math.floor(Math.random() * 9);
+            if (this.sudokuBoard[r][c] !== 0) {
+                this.sudokuBoard[r][c] = 0;
+                removed++;
+            }
+        }
+        
+        this.sudokuSelected = null;
+        this.drawSudoku(ctx);
+        
+        canvas.onclick = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            const col = Math.floor(x / 50);
+            const row = Math.floor(y / 50);
+            if (row >= 0 && row < 9 && col >= 0 && col < 9) {
+                this.sudokuSelected = { row, col };
+                this.drawSudoku(ctx);
+            }
+        };
+        
+        document.onkeydown = (e) => {
+            if (!this.sudokuSelected || this.currentGame !== 'sudoku') return;
+            const { row, col } = this.sudokuSelected;
+            const num = parseInt(e.key);
+            if (num >= 1 && num <= 9) {
+                // Проверяем что ячейка была пустой (нельзя менять заданные)
+                const original = this.generateSudoku();
+                if (this.sudokuBoard[row][col] === 0 || this.sudokuBoard[row][col] !== this.sudokuSolution[row][col]) {
+                    this.sudokuBoard[row][col] = num;
+                    if (num === this.sudokuSolution[row][col]) {
+                        this.updateScore(10);
+                    } else {
+                        this.updateScore(-5);
+                    }
+                    this.drawSudoku(ctx);
+                    this.checkSudokuWin();
+                }
+            } else if (e.key === 'Backspace' || e.key === 'Delete') {
+                if (this.sudokuBoard[row][col] !== this.sudokuSolution[row][col]) {
+                    this.sudokuBoard[row][col] = 0;
+                    this.drawSudoku(ctx);
+                }
+            }
+        };
+        
+        // Кнопка новой игры
+        document.getElementById('gameControls').innerHTML =
+            '<button class="game-control-btn" onclick="game.initSudoku()">🔄 Новая игра</button>';
+    },
+
+    generateSudoku() {
+        // Простая генерация судоку
+        const board = Array(9).fill(null).map(() => Array(9).fill(0));
+        
+        const isValid = (board, row, col, num) => {
+            for (let i = 0; i < 9; i++) {
+                if (board[row][i] === num) return false;
+                if (board[i][col] === num) return false;
+            }
+            const boxRow = Math.floor(row / 3) * 3;
+            const boxCol = Math.floor(col / 3) * 3;
+            for (let i = boxRow; i < boxRow + 3; i++) {
+                for (let j = boxCol; j < boxCol + 3; j++) {
+                    if (board[i][j] === num) return false;
+                }
+            }
+            return true;
+        };
+        
+        const solve = (board) => {
+            for (let row = 0; row < 9; row++) {
+                for (let col = 0; col < 9; col++) {
+                    if (board[row][col] === 0) {
+                        const nums = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+                        for (const num of nums) {
+                            if (isValid(board, row, col, num)) {
+                                board[row][col] = num;
+                                if (solve(board)) return true;
+                                board[row][col] = 0;
+                            }
+                        }
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+        
+        solve(board);
+        return board;
+    },
+
+    drawSudoku(ctx) {
+        const w = ctx.canvas.width;
+        const h = ctx.canvas.height;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        
+        const cellSize = 50;
+        
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                const x = col * cellSize;
+                const y = row * cellSize;
+                
+                // Фон выделенной ячейки
+                if (this.sudokuSelected && this.sudokuSelected.row === row && this.sudokuSelected.col === col) {
+                    ctx.fillStyle = '#BBDEFB';
+                    ctx.fillRect(x, y, cellSize, cellSize);
+                } else if ((Math.floor(row/3) + Math.floor(col/3)) % 2 === 0) {
+                    ctx.fillStyle = '#f5f5f5';
+                    ctx.fillRect(x, y, cellSize, cellSize);
+                }
+                
+                // Рамка
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = (row % 3 === 0 && col % 3 === 0) ? 3 : 1;
+                ctx.strokeRect(x, y, cellSize, cellSize);
+                
+                // Число
+                if (this.sudokuBoard[row][col] !== 0) {
+                    const isGiven = this.sudokuBoard[row][col] === this.sudokuSolution[row][col] && this.sudokuBoard[row][col] !== 0;
+                    // Проверяем было ли задано изначально
+                    ctx.fillStyle = '#333';
+                    ctx.font = 'bold 24px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.sudokuBoard[row][col], x + cellSize/2, y + cellSize/2);
+                }
+            }
+        }
+    },
+
+    checkSudokuWin() {
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                if (this.sudokuBoard[row][col] !== this.sudokuSolution[row][col]) return;
+            }
+        }
+        this.addNotification('🎉 Судоку решено! Отлично!', 'success');
+    },
+
+    // ===== ШАХМАТЫ =====
+    chessBoard: [],
+    chessSelected: null,
+    chessTurn: 'white',
+    chessPossibleMoves: [],
+    
+    initChess() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 480;
+        canvas.height = 480;
+        
+        this.chessBoard = [
+            ['♜','♞','♝','♛','♚','♝','♞','♜'],
+            ['♟','♟','♟','♟','♟','♟','♟','♟'],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['♙','♙','♙','♙','♙','♙','♙','♙'],
+            ['♖','♘','♗','♕','♔','♗','♘','♖']
+        ];
+        this.chessSelected = null;
+        this.chessTurn = 'white';
+        this.chessPossibleMoves = [];
+        this.drawChess(ctx);
+        
+        canvas.onclick = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+            const col = Math.floor(x / 60);
+            const row = Math.floor(y / 60);
+            if (row >= 0 && row < 8 && col >= 0 && col < 8) {
+                this.handleChessClick(row, col, ctx);
+            }
+        };
+        
+        document.getElementById('gameControls').innerHTML =
+            '<button class="game-control-btn" onclick="game.initChess()">🔄 Новая игра</button>';
+        document.onkeydown = null;
+    },
+
+    isWhitePiece(piece) {
+        return '♙♖♗♕♔♘'.includes(piece);
+    },
+    
+    isBlackPiece(piece) {
+        return '♟♜♝♛♚♞'.includes(piece);
+    },
+
+    handleChessClick(row, col, ctx) {
+        const piece = this.chessBoard[row][col];
+        
+        if (this.chessSelected) {
+            // Пытаемся сделать ход
+            const isMoveValid = this.chessPossibleMoves.some(m => m.row === row && m.col === col);
+            if (isMoveValid) {
+                this.chessBoard[row][col] = this.chessBoard[this.chessSelected.row][this.chessSelected.col];
+                this.chessBoard[this.chessSelected.row][this.chessSelected.col] = '';
+                this.chessTurn = this.chessTurn === 'white' ? 'black' : 'white';
+                this.chessSelected = null;
+                this.chessPossibleMoves = [];
+                this.updateScore(10);
+                this.drawChess(ctx);
+                return;
+            }
+        }
+        
+        // Выбираем фигуру
+        if (piece && ((this.chessTurn === 'white' && this.isWhitePiece(piece)) || (this.chessTurn === 'black' && this.isBlackPiece(piece)))) {
+            this.chessSelected = { row, col };
+            this.chessPossibleMoves = this.getChessMoves(row, col, piece);
+        } else {
+            this.chessSelected = null;
+            this.chessPossibleMoves = [];
+        }
+        this.drawChess(ctx);
+    },
+
+    getChessMoves(row, col, piece) {
+        const moves = [];
+        const isWhite = this.isWhitePiece(piece);
+        const addIfValid = (r, c) => {
+            if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                const target = this.chessBoard[r][c];
+                if (!target || (isWhite ? this.isBlackPiece(target) : this.isWhitePiece(target))) {
+                    moves.push({ row: r, col: c });
+                }
+            }
+        };
+        
+        const type = piece.toLowerCase();
+        if (type === '♟' || type === '♙') {
+            const dir = isWhite ? -1 : 1;
+            if (!this.chessBoard[row + dir]?.[col]) moves.push({ row: row + dir, col });
+            if ((isWhite && row === 6) || (!isWhite && row === 1)) {
+                if (!this.chessBoard[row + dir]?.[col] && !this.chessBoard[row + dir*2]?.[col]) {
+                    moves.push({ row: row + dir*2, col });
+                }
+            }
+            if (this.chessBoard[row + dir]?.[col - 1] && (isWhite ? this.isBlackPiece(this.chessBoard[row+dir][col-1]) : this.isWhitePiece(this.chessBoard[row+dir][col-1]))) {
+                moves.push({ row: row + dir, col: col - 1 });
+            }
+            if (this.chessBoard[row + dir]?.[col + 1] && (isWhite ? this.isBlackPiece(this.chessBoard[row+dir][col+1]) : this.isWhitePiece(this.chessBoard[row+dir][col+1]))) {
+                moves.push({ row: row + dir, col: col + 1 });
+            }
+        } else if (type === '♜' || type === '♖') {
+            for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+                for (let i = 1; i < 8; i++) {
+                    const r = row + dr*i, c = col + dc*i;
+                    if (r < 0 || r >= 8 || c < 0 || c >= 8) break;
+                    const t = this.chessBoard[r][c];
+                    if (!t) { moves.push({row:r, col:c}); }
+                    else { if (isWhite ? this.isBlackPiece(t) : this.isWhitePiece(t)) moves.push({row:r, col:c}); break; }
+                }
+            }
+        } else if (type === '♞' || type === '♘') {
+            for (const [dr, dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+                addIfValid(row+dr, col+dc);
+            }
+        } else if (type === '♝' || type === '♗') {
+            for (const [dr, dc] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
+                for (let i = 1; i < 8; i++) {
+                    const r = row + dr*i, c = col + dc*i;
+                    if (r < 0 || r >= 8 || c < 0 || c >= 8) break;
+                    const t = this.chessBoard[r][c];
+                    if (!t) { moves.push({row:r, col:c}); }
+                    else { if (isWhite ? this.isBlackPiece(t) : this.isWhitePiece(t)) moves.push({row:r, col:c}); break; }
+                }
+            }
+        } else if (type === '♛' || type === '♕') {
+            for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+                for (let i = 1; i < 8; i++) {
+                    const r = row + dr*i, c = col + dc*i;
+                    if (r < 0 || r >= 8 || c < 0 || c >= 8) break;
+                    const t = this.chessBoard[r][c];
+                    if (!t) { moves.push({row:r, col:c}); }
+                    else { if (isWhite ? this.isBlackPiece(t) : this.isWhitePiece(t)) moves.push({row:r, col:c}); break; }
+                }
+            }
+        } else if (type === '♚' || type === '♔') {
+            for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+                addIfValid(row+dr, col+dc);
+            }
+        }
+        return moves;
+    },
+
+    drawChess(ctx) {
+        const size = 60;
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const x = col * size;
+                const y = row * size;
+                
+                ctx.fillStyle = (row + col) % 2 === 0 ? '#f0d9b5' : '#b58863';
+                
+                // Подсветка выбранной
+                if (this.chessSelected && this.chessSelected.row === row && this.chessSelected.col === col) {
+                    ctx.fillStyle = '#8297d9';
+                }
+                
+                // Подсветка возможных ходов
+                if (this.chessPossibleMoves.some(m => m.row === row && m.col === col)) {
+                    ctx.fillStyle = 'rgba(130, 200, 100, 0.6)';
+                }
+                
+                ctx.fillRect(x, y, size, size);
+                
+                const piece = this.chessBoard[row][col];
+                if (piece) {
+                    ctx.font = '36px serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(piece, x + size/2, y + size/2);
+                }
+            }
+        }
+    },
+
+    // ===== NONSTOP BALLS =====
+    nonstopBalls: [],
+    nonstopBlocks: [],
+    nonstopCannon: { x: 300, angle: -Math.PI/2 },
+    nonstopAmmo: 10,
+    nonstopMaxAmmo: 10,
+    nonstopLaunched: 0,
+    nonstopBallTrail: [],
+    nonstopPickedUp: 0,
+    
+    initNonstopBalls() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 600;
+        canvas.height = 500;
+        
+        this.nonstopBlocks = [];
+        this.nonstopBalls = [];
+        this.nonstopBallTrail = [];
+        this.nonstopAmmo = 10;
+        this.nonstopMaxAmmo = 10;
+        this.nonstopLaunched = 0;
+        this.nonstopPickedUp = 0;
+        this.gameScore = 0;
+        this.updateScore(0);
+        
+        // Генерируем блоки
+        for (let row = 0; row < 5; row++) {
+            for (let col = 0; col < 8; col++) {
+                this.nonstopBlocks.push({
+                    x: 40 + col * 68,
+                    y: 30 + row * 35,
+                    w: 60,
+                    h: 28,
+                    hp: row + 1,
+                    maxHp: row + 1
+                });
+            }
+        }
+        
+        // Стартовые шарики
+        for (let i = 0; i < 5; i++) {
+            this.nonstopBalls.push({
+                x: canvas.width/2 - 12 + i * 6,
+                y: canvas.height - 60,
+                vx: 0,
+                vy: 0,
+                active: false,
+                r: 5
+            });
+        }
+        
+        canvas.onclick = (e) => {
+            if (this.currentGame !== 'nonstop') return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const x = (e.clientX - rect.left) * scaleX;
+            this.nonstopCannon.angle = Math.atan2(this.nonstopBalls[0].y - this.nonstopCannon.y, x - this.nonstopCannon.x);
+            this.launchNonstopBalls();
+        };
+        
+        canvas.onmousemove = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const x = (e.clientX - rect.left) * scaleX;
+            this.nonstopCannon.angle = Math.atan2(this.nonstopBalls[0]?.y - 400, x - this.nonstopCannon.x);
+            this.nonstopCannon.angle = Math.max(-Math.PI + 0.1, Math.min(-0.1, this.nonstopCannon.angle));
+        };
+        
+        document.getElementById('gameControls').innerHTML =
+            '<button class="game-control-btn" onclick="game.initNonstopBalls()">🔄 Новая игра</button>';
+        document.onkeydown = null;
+        
+        this.nonstopLoop(ctx, canvas);
+    },
+
+    launchNonstopBalls() {
+        if (this.nonstopLaunched > 0) return;
+        
+        const angle = this.nonstopCannon.angle;
+        const speed = 12;
+        
+        this.nonstopBalls.forEach((ball, i) => {
+            setTimeout(() => {
+                ball.vx = Math.cos(angle) * speed;
+                ball.vy = Math.sin(angle) * speed;
+                ball.active = true;
+            }, i * 50);
+        });
+        
+        this.nonstopLaunched = this.nonstopBalls.length;
+    },
+
+    nonstopLoop(ctx, canvas) {
+        if (this.currentGame !== 'nonstop') return;
+        
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Рисуем и обновляем блоки
+        this.nonstopBlocks.forEach(block => {
+            const alpha = block.hp / block.maxHp;
+            const colors = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db'];
+            ctx.fillStyle = colors[Math.min(block.hp - 1, 4)];
+            ctx.globalAlpha = 0.5 + alpha * 0.5;
+            ctx.beginPath();
+            ctx.roundRect(block.x, block.y, block.w, block.h, 4);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(block.hp, block.x + block.w/2, block.y + block.h/2);
+        });
+        
+        // Обновляем шарики
+        this.nonstopBalls.forEach(ball => {
+            if (!ball.active) return;
+            
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+            
+            // Стенки
+            if (ball.x < ball.r || ball.x > canvas.width - ball.r) ball.vx *= -1;
+            if (ball.y < ball.r) ball.vy *= -1;
+            ball.x = Math.max(ball.r, Math.min(canvas.width - ball.r, ball.x));
+            ball.y = Math.max(ball.r, ball.y);
+            
+            // Столкновения с блоками
+            this.nonstopBlocks.forEach((block, bi) => {
+                if (ball.x > block.x && ball.x < block.x + block.w &&
+                    ball.y > block.y && ball.y < block.y + block.h) {
+                    ball.vy *= -1;
+                    block.hp--;
+                    if (block.hp <= 0) {
+                        this.nonstopBlocks.splice(bi, 1);
+                        this.updateScore(10);
+                    }
+                }
+            });
+            
+            // Собираем шарики снизу
+            if (ball.y > canvas.height - 10) {
+                ball.active = false;
+                ball.vy = 0;
+                ball.vx = 0;
+                this.nonstopPickedUp++;
+            }
+        });
+        
+        // Проверяем завершение раунда
+        const allStopped = this.nonstopBalls.every(b => !b.active);
+        if (allStopped && this.nonstopLaunched > 0) {
+            this.nonstopLaunched = 0;
+            this.nonstopAmmo = Math.min(this.nonstopPickedUp, 30);
+            this.nonstopMaxAmmo = this.nonstopAmmo;
+            this.nonstopPickedUp = 0;
+            
+            // Позиционируем шарики
+            for (let i = 0; i < this.nonstopAmmo; i++) {
+                if (!this.nonstopBalls[i]) {
+                    this.nonstopBalls.push({ x: 0, y: 0, vx: 0, vy: 0, active: false, r: 5 });
+                }
+                this.nonstopBalls[i].x = canvas.width/2 - (this.nonstopAmmo * 3) + i * 6;
+                this.nonstopBalls[i].y = canvas.height - 60;
+            }
+            this.nonstopBalls.length = this.nonstopAmmo;
+            
+            // Новый уровень если все блоки уничтожены
+            if (this.nonstopBlocks.length === 0) {
+                this.addNotification('🎉 Уровень пройден!', 'success');
+                setTimeout(() => this.initNonstopBalls(), 1500);
+                return;
+            }
+        }
+        
+        // Рисуем шарики
+        this.nonstopBalls.forEach(ball => {
+            ctx.fillStyle = ball.active ? '#fff' : '#aaa';
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        
+        // Пушка
+        this.nonstopCannon.x = canvas.width / 2;
+        this.nonstopCannon.y = canvas.height - 40;
+        ctx.save();
+        ctx.translate(this.nonstopCannon.x, this.nonstopCannon.y);
+        ctx.rotate(this.nonstopCannon.angle + Math.PI/2);
+        ctx.fillStyle = '#667eea';
+        ctx.fillRect(-8, 0, 16, -40);
+        ctx.restore();
+        
+        // Счёт
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Блоков: ${this.nonstopBlocks.length}`, 10, 25);
+        
+        this.gameAnimFrame = requestAnimationFrame(() => this.nonstopLoop(ctx, canvas));
     },
 
     // Переключение экрана
@@ -1237,136 +1997,39 @@ const game = {
         document.getElementById(screenId).classList.add('active');
     },
 
-    // Загрузить скетчи
-    async loadSketches() {
-        try {
-            const response = await fetch(`${API_BASE}/sketches/${this.petId}`);
-            const data = await response.json();
-            
-            const sketchList = document.getElementById('sketchList');
-            sketchList.innerHTML = '';
-            
-            // Кнопка создания
-            const createBtn = document.createElement('button');
-            createBtn.className = 'create-sketch-btn';
-            createBtn.innerHTML = '➕ Создать новый рисунок';
-            createBtn.onclick = () => this.newSketch();
-            sketchList.appendChild(createBtn);
-            
-            // Рисунки
-            data.sketches.forEach(sketch => {
-                const item = document.createElement('div');
-                item.className = 'sketch-item';
-                item.innerHTML = `
-                    <img src="${sketch.imageData}" class="sketch-item-preview" alt="${sketch.title}">
-                    <div class="sketch-item-title">${sketch.title}</div>
-                    <button class="sketch-item-delete" onclick="game.deleteSketch('${sketch.id}', event)">✕</button>
-                `;
-                item.onclick = () => this.editSketch(sketch.id);
-                sketchList.appendChild(item);
-            });
-        } catch (error) {
-            console.error('Error loading sketches:', error);
-        }
-    },
-
-    // Создать новый рисунок
-    newSketch() {
-        this.currentSketchId = null;
-        this.editor.clear();
-        this.switchScreen('editorScreen');
-    },
-
-    // Редактировать существующий рисунок
-    async editSketch(sketchId) {
-        try {
-            const response = await fetch(`${API_BASE}/sketches/${this.petId}/${sketchId}`);
-            const sketch = await response.json();
-            
-            this.currentSketchId = sketchId;
-            this.editor.loadImage(sketch.imageData);
-            this.switchScreen('editorScreen');
-        } catch (error) {
-            console.error('Error loading sketch:', error);
-        }
-    },
-
-    // Удалить рисунок
-    async deleteSketch(sketchId, event) {
-        event.stopPropagation();
-        
-        try {
-            await fetch(`${API_BASE}/sketches/${this.petId}/${sketchId}`, {
-                method: 'DELETE'
-            });
-            this.loadSketches();
-        } catch (error) {
-            console.error('Error deleting sketch:', error);
-        }
-    },
-
-    // Сохранить рисунок
+    // Сохранить рисунок из редактора
     async saveSketch() {
         const imageData = this.editor.getImageData();
-        const title = prompt('Назовите ваш рисунок:', `Рисунок ${new Date().toLocaleString()}`);
-        
+        const title = prompt('Назовите ваш рисунок:', 'Рисунок ' + new Date().toLocaleString());
         if (!title) return;
-        
         try {
-            const response = await fetch(`${API_BASE}/sketches/${this.petId}/save`, {
+            const response = await fetch(API_BASE + '/sketches/' + this.petId + '/save', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    title,
-                    imageData
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, imageData })
             });
-
-            if (!response.ok) {
-                throw new Error('Save failed: HTTP ' + response.status);
-            }
-
-            const data = await response.json();
-            this.addNotification('Рисунок сохранён! Кот был в восторге! 😻', 'success');
-
-            // Обновляем настроение питомца
+            if (!response.ok) throw new Error('Save failed');
+            await response.json();
+            this.addNotification('Рисунок сохранён! 😻', 'success');
             await this.getPetStatus();
             this.updateUI();
-
-            // Перезагружаем список перед переключением, иначе новый рисунок
-            // не появится до повторного захода в скетчбук (фикс UX-бага).
-            await this.loadSketches();
-
             this.backToSketchList();
         } catch (error) {
             console.error('Error saving sketch:', error);
-            this.addNotification(
-                'Не удалось сохранить рисунок. Попробуйте ещё раз.',
-                'error'
-            );
+            this.addNotification('Не удалось сохранить рисунок.', 'error');
         }
     },
 
-    // Скачать текущий рисунок как PNG
+    // Скачать из редактора как PNG
     exportSketch() {
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = 'sketch-' + stamp + '.png';
+        const filename = 'sketch-' + Date.now() + '.png';
         this.editor.canvas.toBlob((blob) => {
-            if (!blob) {
-                this.addNotification('Не удалось экспортировать рисунок 😿', 'error');
-                return;
-            }
-            const url = URL.createObjectURL(blob);
+            if (!blob) return;
             const link = document.createElement('a');
-            link.href = url;
+            link.href = URL.createObjectURL(blob);
             link.download = filename;
-            document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            this.addNotification('Скачано: ' + filename + ' 📥', 'success');
+            this.addNotification('Скачано: ' + filename, 'success');
         }, 'image/png');
     }
 };

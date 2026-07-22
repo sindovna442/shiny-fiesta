@@ -99,18 +99,33 @@
             </div>
         </div>
 
-        <!-- Экран скетчбука -->
+        <!-- Экран скетчбука-блокнота -->
         <div id="sketchScreen" class="screen">
-            <div class="sketch-header">
+            <div class="notebook-header">
                 <button class="back-btn" onclick="game.backToMain()">← Назад</button>
                 <h2>📓 Скетчбук</h2>
-                <button class="new-sketch-btn" onclick="game.newSketch()" style="visibility: hidden;">Новый рисунок</button>
+                <button class="new-page-btn" onclick="game.newSketchFromNotebook()">➕ Новая страница</button>
             </div>
 
-            <div id="sketchList" class="sketch-list">
-                <button class="create-sketch-btn" onclick="game.newSketch()">
-                    ➕ Создать новый рисунок
-                </button>
+            <div class="notebook-container">
+                <button class="notebook-nav prev" onclick="game.prevPage()">◀</button>
+                
+                <div class="notebook-book">
+                    <div class="notebook-page" id="notebookPage">
+                        <canvas id="notebookCanvas" width="500" height="600"></canvas>
+                        <div class="page-title" id="pageTitle">Пустая страница</div>
+                        <div class="page-date" id="pageDate"></div>
+                        <div class="page-number" id="pageNumber">1 / 1</div>
+                    </div>
+                </div>
+                
+                <button class="notebook-nav next" onclick="game.nextPage()">▶</button>
+            </div>
+
+            <div class="notebook-actions">
+                <button class="notebook-action-btn" onclick="game.editCurrentPage()">✏️ Редактировать</button>
+                <button class="notebook-action-btn delete" onclick="game.deleteCurrentPage()">🗑️ Удалить</button>
+                <button class="notebook-action-btn" onclick="game.exportCurrentPage()">⬇️ Скачать PNG</button>
             </div>
         </div>
 
@@ -165,20 +180,36 @@
                 <h2>🎮 Мини-игры</h2>
             </div>
 
-            <div class="minigames-list">
-                <button class="minigame-btn" onclick="game.startMinigame('chess')">
-                    ♟️ Шахматы
-                </button>
-                <button class="minigame-btn" onclick="game.startMinigame('minesweeper')">
-                    💣 Сапер
-                </button>
-                <button class="minigame-btn" onclick="game.startMinigame('sudoku')">
-                    🔢 Судоку
-                </button>
-                <button class="minigame-btn" onclick="game.startMinigame('ricochet')">
-                    🎾 Рикошет
-                </button>
+            <div class="minigames-grid">
+                <div class="minigame-card" onclick="game.startMinigame('chess')">
+                    <div class="minigame-icon">♟️</div>
+                    <div class="minigame-name">Шахматы</div>
+                    <div class="minigame-desc">Классическая игра разума</div>
+                </div>
+                <div class="minigame-card" onclick="game.startMinigame('sudoku')">
+                    <div class="minigame-icon">🔢</div>
+                    <div class="minigame-name">Судоку</div>
+                    <div class="minigame-desc">Логическая головоломка</div>
+                </div>
+                <div class="minigame-card" onclick="game.startMinigame('nonstop')">
+                    <div class="minigame-icon">🎯</div>
+                    <div class="minigame-name">Nonstop Balls</div>
+                    <div class="minigame-desc">Шары vs Блоки</div>
+                </div>
             </div>
+        </div>
+
+        <!-- Экран мини-игры (подключается динамически) -->
+        <div id="gameScreen" class="screen">
+            <div class="game-header">
+                <button class="back-btn" onclick="game.exitMinigame()">← Назад</button>
+                <h2 id="gameTitle">Мини-игра</h2>
+                <div class="game-score" id="gameScore">0</div>
+            </div>
+            <div class="game-container" id="gameContainer">
+                <canvas id="gameCanvas" width="600" height="500"></canvas>
+            </div>
+            <div class="game-controls" id="gameControls"></div>
         </div>
     </div>
 
