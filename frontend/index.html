@@ -8,19 +8,45 @@
 </head>
 <body>
     <div class="container">
-        <!-- Главная страница игры -->
+        <!-- Главный экран с комнатами -->
         <div id="mainScreen" class="screen active">
             <div class="header">
                 <h1>Demon Cat Tamagotchi 😈🐱</h1>
                 <p id="petName" class="pet-name">Демонический Кот</p>
             </div>
 
-            <!-- Анимация кота -->
-            <div class="pet-container">
-                <canvas id="petCanvas" width="300" height="300"></canvas>
+            <!-- Система комнат -->
+            <div class="rooms-container">
+                <!-- Левая стрелка навигации -->
+                <button class="nav-arrow left-arrow" onclick="game.changeRoom(-1)">◀</button>
+
+                <!-- Комната -->
+                <div class="room-wrapper">
+                    <div id="currentRoom" class="room">
+                        <!-- Канвас с котиком -->
+                        <canvas id="petCanvas" width="600" height="500"></canvas>
+                        
+                        <!-- Элементы комнаты -->
+                        <div id="roomElements" class="room-elements"></div>
+                    </div>
+                </div>
+
+                <!-- Правая стрелка навигации -->
+                <button class="nav-arrow right-arrow" onclick="game.changeRoom(1)">▶</button>
             </div>
 
-            <!-- Показатели питомца -->
+            <!-- Индикатор текущей комнаты -->
+            <div class="room-indicator">
+                <span id="roomTitle" class="room-title">Комната</span>
+                <div class="dots">
+                    <span class="dot active" data-room="0"></span>
+                    <span class="dot" data-room="1"></span>
+                    <span class="dot" data-room="2"></span>
+                    <span class="dot" data-room="3"></span>
+                </div>
+            </div>
+
+            <!-- Панель показателей -->
             <div class="stats-panel">
                 <div class="stat">
                     <label>🍖 Голод</label>
@@ -59,30 +85,13 @@
                 </div>
             </div>
 
-            <!-- Кнопки управления -->
-            <div class="controls">
-                <button class="control-btn feed-btn" onclick="game.feedPet()">
-                    <span>🍖</span>
-                    <span>Кормить</span>
-                </button>
-                <button class="control-btn pet-btn" onclick="game.petPet()">
-                    <span>🤲</span>
-                    <span>Гладить</span>
-                </button>
-                <button class="control-btn wash-btn" onclick="game.washPet()">
-                    <span>🛁</span>
-                    <span>Мыть</span>
-                </button>
-                <button class="control-btn sleep-btn" onclick="game.sleepPet()">
-                    <span>💤</span>
-                    <span>Спать</span>
-                </button>
-            </div>
-
-            <!-- Навигация на блокнот -->
+            <!-- Кнопки навигации -->
             <div class="navigation">
                 <button class="nav-btn sketch-btn" onclick="game.goToSketch()">
-                    📔 Открыть скетчбук
+                    📓 Открыть скетчбук
+                </button>
+                <button class="nav-btn minigames-btn" onclick="game.goToMinigames()">
+                    🎮 Мини-игры
                 </button>
             </div>
         </div>
@@ -90,12 +99,11 @@
         <!-- Экран скетчбука -->
         <div id="sketchScreen" class="screen">
             <div class="sketch-header">
-                <button class="back-btn" onclick="game.backToMain()">&larr; Назад</button>
-                <h2>📔 Скетчбук</h2>
+                <button class="back-btn" onclick="game.backToMain()">← Назад</button>
+                <h2>📓 Скетчбук</h2>
                 <button class="new-sketch-btn" onclick="game.newSketch()" style="visibility: hidden;">Новый рисунок</button>
             </div>
 
-            <!-- Список страниц скетчбука -->
             <div id="sketchList" class="sketch-list">
                 <button class="create-sketch-btn" onclick="game.newSketch()">
                     ➕ Создать новый рисунок
@@ -106,7 +114,7 @@
         <!-- Экран редактора рисования -->
         <div id="editorScreen" class="screen">
             <div class="editor-header">
-                <button class="back-btn" onclick="game.backToSketchList()">&larr; К скетчбуку</button>
+                <button class="back-btn" onclick="game.backToSketchList()">← К скетчбуку</button>
                 <h2>🎨 Редактор рисования</h2>
                 <button class="save-btn" onclick="game.saveSketch()">💾 Сохранить</button>
             </div>
@@ -142,6 +150,29 @@
                 <div class="canvas-wrapper">
                     <canvas id="drawingCanvas" width="600" height="400"></canvas>
                 </div>
+            </div>
+        </div>
+
+        <!-- Экран мини-игр -->
+        <div id="minigamesScreen" class="screen">
+            <div class="minigames-header">
+                <button class="back-btn" onclick="game.backToMain()">← Назад</button>
+                <h2>🎮 Мини-игры</h2>
+            </div>
+
+            <div class="minigames-list">
+                <button class="minigame-btn" onclick="game.startMinigame('chess')">
+                    ♟️ Шахматы
+                </button>
+                <button class="minigame-btn" onclick="game.startMinigame('minesweeper')">
+                    💣 Сапер
+                </button>
+                <button class="minigame-btn" onclick="game.startMinigame('sudoku')">
+                    🔢 Судоку
+                </button>
+                <button class="minigame-btn" onclick="game.startMinigame('ricochet')">
+                    🎾 Рикошет
+                </button>
             </div>
         </div>
     </div>
