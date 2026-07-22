@@ -315,4 +315,13 @@ def delete_sketch(pet_id, sketch_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # Bind to 0.0.0.0 by default so the app is reachable from the Freebuff
+    # preview wrapper when launched directly via `python backend/app.py`.
+    # Override locally with HOST=127.0.0.1 if you don't want it public.
+    host = os.environ.get('HOST', '0.0.0.0')
+    try:
+        port = int(os.environ.get('PORT', 5000))
+    except ValueError:
+        port = 5000
+    debug = os.environ.get('FLASK_DEBUG', '1') == '1'
+    app.run(host=host, port=port, debug=debug)
