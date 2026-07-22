@@ -77,6 +77,10 @@
                     <span>💤</span>
                     <span>Спать</span>
                 </button>
+                <button class="control-btn reset-btn" onclick="game.resetPet()">
+                    <span>🔥</span>
+                    <span>Сбросить игру</span>
+                </button>
             </div>
 
             <!-- Навигация на блокнот -->
@@ -135,6 +139,8 @@
                         <button class="action-btn" onclick="game.editor.undo()">↶ Отмена</button>
                         <button class="action-btn" onclick="game.editor.redo()">↷ Повтор</button>
                         <button class="action-btn" onclick="game.editor.clear()">🗑️ Очистить</button>
+                        <button class="action-btn" onclick="game.exportSketch()">⬇️ Экспорт PNG</button>
+                        <span id="historyIndicator" class="history-indicator">↶ 1/20 ↷</span>
                     </div>
                 </div>
 

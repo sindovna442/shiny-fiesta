@@ -93,6 +93,9 @@
                 <button class="nav-btn minigames-btn" onclick="game.goToMinigames()">
                     🎮 Мини-игры
                 </button>
+                <button class="nav-btn reset-btn" onclick="game.resetPet()">
+                    🔥 Сбросить игру
+                </button>
             </div>
         </div>
 
@@ -143,6 +146,8 @@
                         <button class="action-btn" onclick="game.editor.undo()">↶ Отмена</button>
                         <button class="action-btn" onclick="game.editor.redo()">↷ Повтор</button>
                         <button class="action-btn" onclick="game.editor.clear()">🗑️ Очистить</button>
+                        <button class="action-btn" onclick="game.exportSketch()">⬇️ Экспорт PNG</button>
+                        <span id="historyIndicator" class="history-indicator">↶ 1/20 ↷</span>
                     </div>
                 </div>
 
