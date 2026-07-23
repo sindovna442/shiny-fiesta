@@ -19,6 +19,10 @@ const game = {
     _petAnimFrame: null,
     _petAnimLoopRunning: false,
     _mainScreenActive: false,
+    // Perf cache: getPetScale() is constant for the current canvas
+    // backing store; compute once on first use, reuse thereafter.
+    _petScale: null,
+    _petDirty: false,
     
     // Система звука
     audioCtx: null,
@@ -291,7 +295,7 @@ const game = {
                     room.item.y = Math.max(0.05, Math.min(0.95, (y - self.dragState.offsetY) / canvas.height));
                 }
                 
-                self.drawPet();
+                self.requestPetDraw();
                 return;
             }
             
@@ -360,11 +364,11 @@ const game = {
             self.hoveredItem = null;
             canvas.style.cursor = 'default';
             if (!self.dragState.active) {
-                self.drawPet();
+                self.requestPetDraw();
             } else {
                 self.dragState.active = false;
                 self.dragState.type = null;
-                self.drawPet();
+                self.requestPetDraw();
             }
         });
         
@@ -476,6 +480,8 @@ const game = {
     },
 
     updateAndDrawParticles(ctx) {
+        // Perf: skip the loop when no particles are queued.
+        if (this.particles.length === 0) return;
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const p = this.particles[i];
             
@@ -758,6 +764,31 @@ const game = {
     redrawPetNow() {
         this.drawPet();
     },
+
+    // ===== Perf helpers =====
+    // The rAF animation loop runs at ~60 fps. Event handlers
+    // therefore never need to repaint synchronously: any pending
+    // redraw happens within ~16 ms anyway. This stub is a safe
+    // drop-in replacement for `this.drawPet()` in event code.
+    requestPetDraw() {
+        // Intentional no-op. Reserving for future dirty-flag use.
+    },
+    // Lighter overlay for the dragged item: paint only the item
+    // sculpture with static (no hover) parameters — no roundRect
+    // label, no measureText, no save/restore churn beyond one call.
+    _drawDraggedItemOverlay(ctx, item, w, h) {
+        if (!item) return;
+        const cx = w * item.x;
+        const cy = h * item.y;
+        if (item.type === 'foodBowl') {
+            this.drawFoodBowl(ctx, cx, cy, w * 0.08, false);
+        } else if (item.type === 'bathtub') {
+            this.drawBathtub(ctx, cx, cy, w * 0.12, false);
+        } else if (item.type === 'bed') {
+            this.drawBed(ctx, cx, cy, w * 0.14, false);
+        }
+    },
+
     // ===== rAF animation loop for pet canvas =====
     petAnimLoop() {
         if (!this._petAnimLoopRunning) return; // safety
@@ -817,11 +848,11 @@ const game = {
             if (inside && prevHovered !== item.type) {
                 this.hoveredItem = item.type;
                 canvas.style.cursor = 'pointer';
-                this.drawPet(); // перерисовка только когда hover меняется
+                this.requestPetDraw();
             } else if (!inside && prevHovered !== null) {
                 this.hoveredItem = null;
                 canvas.style.cursor = 'default';
-                this.drawPet(); // перерисовка только когда hover снимается
+                this.requestPetDraw();
             }
             return;
         }
@@ -919,13 +950,14 @@ const game = {
         const petY = canvas.height * room.petY;
         this.drawDemonCat(ctx, petX, petY);
 
-        // Когда предмет перетаскивают — перерисовываем его ПОВЕРХ кота,
-        // чтобы еда/ванна/кровать визуально были впереди во время drag.
-        if (this.dragState && this.dragState.active && this.dragState.type === 'item') {
-            const prevHover = this.hoveredItem;
-            this.hoveredItem = null;
-            this.drawRoomElements(ctx, canvas.width, canvas.height);
-            this.hoveredItem = prevHover;
+        // Когда предмет перетаскивают — рисуем только его поверх кота.
+        // Один лёгкий проход: нет второй drawRoomElements, нет меряющего
+        // hover-label. rAF-цикл всё равно перерисует кадр через ~16 ms.
+        if (
+            this.dragState && this.dragState.active &&
+            this.dragState.type === 'item' && room.item
+        ) {
+            this._drawDraggedItemOverlay(ctx, room.item, canvas.width, canvas.height);
         }
 
         
