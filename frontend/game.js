@@ -3318,6 +3318,10 @@ class DrawingEditor {
 
     setupEventListeners() {
         this.canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
+        this.canvas.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'z') { this.undo(); e.preventDefault(); }
+            if (e.ctrlKey && e.key === 'y') { this.redo(); e.preventDefault(); }
+        });
         this.canvas.addEventListener('mousemove', (e) => this.draw(e));
         this.canvas.addEventListener('mouseup', () => this.stopDrawing());
         this.canvas.addEventListener('mouseleave', () => this.stopDrawing());
