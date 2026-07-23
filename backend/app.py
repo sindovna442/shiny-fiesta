@@ -13,8 +13,6 @@ CORS(app)
 pets_data = {}
 user_sketches = {}
 
-load_state(pets_data, user_sketches, DemonCat)
-
 # Pet Constants
 PET_STATES = {
     'BABY': 0,
@@ -195,6 +193,10 @@ class DemonCat:
             self.stage = PET_STATES['ELDER']
             return 'ELDER'
         return None
+
+
+# Rehydrate pets + sketches from disk (must come AFTER DemonCat class definition)
+load_state(pets_data, user_sketches, DemonCat)
 
 
 # ============ ROUTES ============
