@@ -5638,16 +5638,8 @@ class ChefGame {
         // Draw placed toppings/freeform ingredients
         for (const ing of this.ingredients) {
             if (this.base === 'cake' && ing.type === 'cake_topping') continue; // drawn above
-            ctx.fillStyle = ing.color;
-            ctx.beginPath();
             const r = ing.type === 'sauce' || ing.type === 'glaze_color' ? 35 : 18;
-            ctx.arc(ing.x, ing.y, r, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = '12px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(ing.emoji || '', ing.x, ing.y + 5);
-            ctx.textAlign = 'start';
+            this.drawIngredientSprite(ctx, ing, ing.x, ing.y, r);
         }
 
         // Ingredient strip at bottom
@@ -5667,16 +5659,10 @@ class ChefGame {
             this.roundRect(ctx, ix - 40, H - 78, 80, 70, 10);
             ctx.fill();
             ctx.stroke();
-            ctx.fillStyle = ing.color;
-            ctx.beginPath();
-            ctx.arc(ix, H - 50, 18, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = '18px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(ing.emoji || '●', ix, H - 43);
+            this.drawIngredientSprite(ctx, ing, ix, H - 50, 18);
             ctx.fillStyle = '#333';
             ctx.font = '9px sans-serif';
+            ctx.textAlign = 'center';
             ctx.fillText(ing.name || '', ix, H - 8);
         }
         ctx.textAlign = 'start';
@@ -5703,15 +5689,7 @@ class ChefGame {
         // Drag preview
         if (this.dragging && this.dragItem && this.dragItem.ingredient) {
             ctx.globalAlpha = 0.7;
-            ctx.fillStyle = this.dragItem.ingredient.color;
-            ctx.beginPath();
-            ctx.arc(this.dragX, this.dragY, 22, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = '20px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(this.dragItem.ingredient.emoji || '●', this.dragX, this.dragY + 7);
-            ctx.textAlign = 'start';
+            this.drawIngredientSprite(ctx, this.dragItem.ingredient, this.dragX, this.dragY, 22);
             ctx.globalAlpha = 1;
         }
 
@@ -5728,7 +5706,196 @@ class ChefGame {
         ctx.textAlign = 'start';
     }
 
+    drawIngredientSprite(ctx, ing, x, y, r) {
+        const name = (ing.name || '').toLowerCase();
+        ctx.save();
+        ctx.translate(x, y);
+        const s = r / 18; // scale relative to default radius
+        
+        // Draw different shapes based on ingredient type
+        if (name.includes('pepperoni') || name.includes('pep')) {
+            // Round pepperoni slice
+            ctx.fillStyle = '#cc3333';
+            ctx.beginPath(); ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#aa2222';
+            ctx.beginPath(); ctx.arc(-3*s, -3*s, 3*s, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(4*s, 2*s, 2.5*s, 0, Math.PI * 2); ctx.fill();
+        } else if (name.includes('mushroom') || name.includes('гриб')) {
+            // Mushroom cap
+            ctx.fillStyle = '#c8a070';
+            ctx.beginPath(); ctx.ellipse(0, -2*s, r*0.7, r*0.5, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#e8d0b0';
+            ctx.fillRect(-4*s, -2*s, 8*s, 8*s);
+        } else if (name.includes('cheese') || name.includes('сыр')) {
+            // Cheese wedge
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath(); ctx.moveTo(0, -r*0.7); ctx.lineTo(r*0.7, r*0.5); ctx.lineTo(-r*0.5, r*0.6); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#ffed4a';
+            ctx.beginPath(); ctx.arc(-2*s, 2*s, 4*s, 0, Math.PI*2); ctx.fill();
+        } else if (name.includes('olive') || name.includes('олив')) {
+            // Olive
+            ctx.fillStyle = '#2d5a27';
+            ctx.beginPath(); ctx.ellipse(0, 0, r*0.5, r*0.7, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#8b0000';
+            ctx.beginPath(); ctx.arc(0, 0, 2*s, 0, Math.PI*2); ctx.fill();
+        } else if (name.includes('bacon') || name.includes('бекон')) {
+            // Bacon strip
+            ctx.fillStyle = '#b54040';
+            ctx.beginPath(); ctx.moveTo(-r*0.7, -3*s); ctx.quadraticCurveTo(0, -8*s, r*0.7, -3*s);
+            ctx.quadraticCurveTo(r*0.8, 2*s, r*0.7, 6*s); ctx.quadraticCurveTo(0, 10*s, -r*0.7, 6*s);
+            ctx.quadraticCurveTo(-r*0.8, 2*s, -r*0.7, -3*s); ctx.fill();
+            ctx.strokeStyle = '#8b2020'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(-r*0.3, -5*s); ctx.lineTo(-r*0.2, 8*s); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(r*0.1, -6*s); ctx.lineTo(r*0.2, 8*s); ctx.stroke();
+        } else if (name.includes('lettuce') || name.includes('салат') || name.includes('лист')) {
+            // Lettuce leaf
+            ctx.fillStyle = '#4caf50';
+            ctx.beginPath(); ctx.ellipse(0, 0, r*0.9, r*0.4, 0.3, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#66bb6a';
+            ctx.beginPath(); ctx.ellipse(-3*s, -2*s, r*0.6, r*0.25, -0.1, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#388e3c'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(-r*0.7, 0); ctx.lineTo(r*0.7, 2*s); ctx.stroke();
+        } else if (name.includes('tomato') || name.includes('помидор') || name.includes('томат')) {
+            // Tomato slice
+            ctx.fillStyle = '#e53935';
+            ctx.beginPath(); ctx.arc(0, 0, r*0.7, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#ff5252';
+            ctx.beginPath(); ctx.arc(0, 0, r*0.45, 0, Math.PI*2); ctx.fill();
+            // Seeds
+            ctx.fillStyle = '#ffab91';
+            for (let i = 0; i < 4; i++) {
+                const a = i * Math.PI/2 + 0.3;
+                ctx.beginPath(); ctx.ellipse(Math.cos(a)*r*0.35, Math.sin(a)*r*0.35, 2, 3, a, 0, Math.PI*2); ctx.fill();
+            }
+        } else if (name.includes('onion') || name.includes('лук')) {
+            // Onion ring
+            ctx.strokeStyle = '#e1bee7'; ctx.lineWidth = 4*s;
+            ctx.beginPath(); ctx.arc(0, 0, r*0.6, 0, Math.PI*2); ctx.stroke();
+            ctx.strokeStyle = '#ce93d8'; ctx.lineWidth = 2*s;
+            ctx.beginPath(); ctx.arc(0, 0, r*0.5, 0.2, Math.PI*1.8); ctx.stroke();
+        } else if (name.includes('fish') || name.includes('рыб')) {
+            // Fish patty
+            ctx.fillStyle = '#d4a574';
+            ctx.beginPath(); ctx.ellipse(0, 0, r*0.8, r*0.55, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#c49464';
+            ctx.beginPath(); ctx.arc(-3*s, -3*s, 4*s, 0, Math.PI*2); ctx.fill();
+        } else if (name.includes('meat') || name.includes('мясн') || name.includes('котлет')) {
+            // Meat patty
+            ctx.fillStyle = '#6d4c41';
+            ctx.beginPath(); ctx.ellipse(0, 0, r*0.85, r*0.5, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#5d4037';
+            ctx.beginPath(); ctx.arc(-4*s, -2*s, 3*s, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(5*s, 3*s, 2.5*s, 0, Math.PI*2); ctx.fill();
+        } else if (name.includes('vegan') || name.includes('веган') || name.includes('зелен')) {
+            // Vegan patty (green)
+            ctx.fillStyle = '#66bb6a';
+            ctx.beginPath(); ctx.ellipse(0, 0, r*0.85, r*0.5, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#43a047';
+            ctx.beginPath(); ctx.arc(-3*s, -2*s, 3*s, 0, Math.PI*2); ctx.fill();
+        } else if (name.includes('ketchup') || name.includes('кетчуп')) {
+            // Ketchup squiggle
+            ctx.strokeStyle = '#d32f2f'; ctx.lineWidth = 4*s; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(-r*0.7, -r*0.3); ctx.quadraticCurveTo(0, -r*0.7, r*0.7, 0);
+            ctx.quadraticCurveTo(r*0.3, r*0.5, -r*0.4, r*0.3); ctx.stroke();
+        } else if (name.includes('mustard') || name.includes('горчиц')) {
+            // Mustard squiggle
+            ctx.strokeStyle = '#fdd835'; ctx.lineWidth = 3*s; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(-r*0.6, r*0.2); ctx.quadraticCurveTo(0, -r*0.5, r*0.6, -r*0.1);
+            ctx.quadraticCurveTo(r*0.3, r*0.4, -r*0.3, r*0.5); ctx.stroke();
+        } else if (name.includes('mayo') || name.includes('майонез')) {
+            // Mayo dollop
+            ctx.fillStyle = '#fff9c4';
+            ctx.beginPath(); ctx.arc(0, 0, r*0.5, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fffde7';
+            ctx.beginPath(); ctx.arc(-3*s, -3*s, 3*s, 0, Math.PI*2); ctx.fill();
+        } else if (name.includes('sauce') || name.includes('соус')) {
+            // Sauce spread
+            ctx.fillStyle = ing.color || '#e53935';
+            ctx.globalAlpha = 0.7;
+            ctx.beginPath(); ctx.arc(0, 0, r*0.9, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 0.4;
+            ctx.beginPath(); ctx.arc(5*s, -5*s, r*0.5, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
+        } else if (name.includes('berry') || name.includes('ягод')) {
+            // Berry
+            ctx.fillStyle = '#e53935';
+            ctx.beginPath(); ctx.arc(0, 0, r*0.6, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#ff7043';
+            ctx.beginPath(); ctx.arc(-2*s, -2*s, 2*s, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#4caf50';
+            ctx.beginPath(); ctx.arc(0, -r*0.6, 1.5*s, 0, Math.PI*2); ctx.fill();
+        } else if (name.includes('sprinkle') || name.includes('посып')) {
+            // Sprinkles - colorful dots
+            const colors = ['#ff5252', '#448aff', '#ffeb3b', '#69f0ae', '#e040fb'];
+            for (let i = 0; i < 8; i++) {
+                const a = i * Math.PI/4 + Math.sin(Date.now()/1000) * 0.2;
+                ctx.fillStyle = colors[i % 5];
+                ctx.beginPath(); ctx.arc(Math.cos(a)*r*0.7, Math.sin(a)*r*0.7, 3*s, 0, Math.PI*2); ctx.fill();
+            }
+        } else if (name.includes('gummy') || name.includes('мармелад') || name.includes('мишк')) {
+            // Gummy bear shape
+            ctx.fillStyle = '#ff8a65';
+            ctx.beginPath(); ctx.ellipse(0, 4*s, r*0.4, r*0.5, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -5*s, r*0.35, 0, Math.PI*2); ctx.fill();
+            // Ears
+            ctx.beginPath(); ctx.arc(-6*s, -10*s, 3*s, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(6*s, -10*s, 3*s, 0, Math.PI*2); ctx.fill();
+        } else if (name.includes('chocolate') || name.includes('шоколад') || name.includes('фигур')) {
+            // Chocolate figure
+            ctx.fillStyle = '#5d4037';
+            ctx.beginPath(); ctx.rect(-r*0.5, -r*0.6, r, r*1.2); ctx.fill();
+            ctx.fillStyle = '#795548';
+            ctx.beginPath(); ctx.rect(-r*0.3, -r*0.4, r*0.3, r*0.3); ctx.fill();
+            ctx.beginPath(); ctx.rect(r*0.1, -r*0.2, r*0.2, r*0.4); ctx.fill();
+        } else if (name.includes('candle') || name.includes('свечк') || name.includes('свеч')) {
+            // Candle
+            ctx.fillStyle = '#ff7043';
+            ctx.fillRect(-2*s, -r*0.4, 4*s, r*0.8);
+            ctx.fillStyle = '#ffcc80';
+            ctx.beginPath(); ctx.arc(0, -r*0.5, 3*s, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#ffeb3b';
+            ctx.beginPath(); ctx.arc(0, -r*0.5, 1.5*s, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0, -r*0.5); ctx.lineTo(0, -r*0.7); ctx.stroke();
+        } else if (name.includes('cream') || name.includes('крем') || name.includes('frost') || name.includes('глазурь')) {
+            // Frosting swirl
+            ctx.fillStyle = ing.color || '#f8bbd0';
+            ctx.beginPath(); ctx.arc(0, 0, r*0.7, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.globalAlpha = 0.4;
+            ctx.beginPath(); ctx.arc(-4*s, -4*s, r*0.3, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
+        } else if (name.includes('glaze') || name.includes('глазур')) {
+            // Glaze coating
+            ctx.fillStyle = ing.color || '#f48fb1';
+            ctx.globalAlpha = 0.6;
+            ctx.beginPath(); ctx.arc(0, 0, r*1.0, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath(); ctx.arc(3*s, -5*s, r*0.6, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
+        } else if (name.includes('greens') || name.includes('зелень') || name.includes('herb')) {
+            // Herb sprigs
+            ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 2*s;
+            ctx.beginPath(); ctx.moveTo(0, r*0.5); ctx.quadraticCurveTo(-r*0.3, -r*0.2, -r*0.7, -r*0.5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, r*0.5); ctx.quadraticCurveTo(r*0.2, -r*0.3, r*0.6, -r*0.6); ctx.stroke();
+            ctx.fillStyle = '#66bb6a';
+            ctx.beginPath(); ctx.arc(-r*0.7, -r*0.5, 3*s, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(r*0.6, -r*0.6, 3*s, 0, Math.PI*2); ctx.fill();
+        } else {
+            // Default: draw a simple detailed ingredient
+            ctx.fillStyle = ing.color || '#e0e0e0';
+            ctx.beginPath(); ctx.arc(0, 0, r*0.7, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1.5*s;
+            ctx.beginPath(); ctx.arc(0, 0, r*0.7, 0, Math.PI*2); ctx.stroke();
+            // Shine
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.beginPath(); ctx.arc(-3*s, -4*s, 4*s, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+    }
+
     drawFeeding(ctx, W, H) {
+
         // Pet sitting at table
         const px = W * 0.68;
         const py = H * 0.32;
