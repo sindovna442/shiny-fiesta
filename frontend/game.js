@@ -2157,6 +2157,11 @@ const game = {
         this.gameScore = 0;
         this.currentGame = gameName;
         document.getElementById('gameScore').textContent = '0';
+        if (gameName === 'surf') {
+            if (!this._surf) this._surf = new SurfGame(this);
+            this._surf.start();
+            return;
+        }
         if (gameName === 'hellfire' || gameName === 'nonstop') {
             // HELLFIRE BALLS owns its own #hellfireScreen — skip shared gameScreen
             document.getElementById('gameTitle').textContent = '🔥 HELLFIRE BALLS';
@@ -4212,6 +4217,822 @@ class HellfireBallsGame {
 }
 
 // Инициализируем игру при загрузке страницы
+
+// ========== MINIGAME: SEA SURF (3-Lane Endless Runner) ==========
+class SurfGame {
+    constructor(parent) {
+        this.parent = parent;
+        this.canvas = null;
+        this.ctx = null;
+        this.running = false;
+        this._lastT = 0;
+        this.W = 0;
+        this.H = 0;
+
+        // Player state
+        this.lane = 1;          // 0=left, 1=center, 2=right
+        this.targetLaneX = 0;   // visual x position (interpolated)
+        this.playerX = 0;
+        this.playerY = 0;
+        this.laneX = [0, 0, 0]; // calculated in fitCanvas
+        this.jumping = false;
+        this.ducking = false;
+        this.jumpT = 0;
+        this.jumpDur = 0.5;
+        this.duckT = 0;
+        this.duckDur = 0.5;
+        this.trampolining = false;
+        this.trampolineT = 0;
+        this.trampolineDur = 1.5;
+
+        // World
+        this.speed = 280;        // px/s
+        this.baseSpeed = 280;
+        this.maxSpeed = 600;
+        this.distance = 0;
+        this.coins = 0;
+        this.bestDistance = 0;
+        this.waterOffset = 0;
+
+        // Objects
+        this.obstacles = [];
+        this.pearls = [];
+        this.bonuses = [];
+        this.particles = [];
+        this.spawnTimer = 0;
+        this.spawnInterval = 1.4;
+
+        // Bonuses
+        this.magnetTimer = 0;
+        this.shieldActive = false;
+        this.shieldFlash = 0;
+
+        // Input
+        this._swipeStart = null;
+        this._handlers = [];
+        this._keys = {};
+
+        // High score
+        try { this.bestDistance = parseFloat(localStorage.getItem('surfBestDist')) || 0; }
+        catch(e) { this.bestDistance = 0; }
+    }
+
+    fitCanvas() {
+        if (!this.canvas) return;
+        const parent = this.canvas.parentElement;
+        if (!parent) return;
+        this.W = Math.min(parent.clientWidth - 20, 800);
+        this.H = Math.min(parent.clientHeight - 20, 600);
+        this.canvas.width = this.W;
+        this.canvas.height = this.H;
+        const w = this.W;
+        this.laneX = [w * 0.18, w * 0.5, w * 0.82];
+        this.playerX = this.laneX[this.lane];
+        this.playerY = this.H * 0.78;
+    }
+
+    start() {
+        const el = document.getElementById('surfScreen');
+        if (!el) return;
+        el.style.display = 'flex';
+        this.canvas = document.getElementById('surfCanvas');
+        if (!this.canvas) return;
+        this.ctx = this.canvas.getContext('2d');
+        this.fitCanvas();
+        this.reset();
+        this.running = true;
+        this._lastT = performance.now();
+        this.bindInput();
+        this._onResize = () => this.fitCanvas();
+        window.addEventListener('resize', this._onResize);
+        requestAnimationFrame((t) => this.loop(t));
+    }
+
+    stop() {
+        this.running = false;
+        this.unbindInput();
+        window.removeEventListener('resize', this._onResize);
+        const el = document.getElementById('surfScreen');
+        if (el) el.style.display = 'none';
+    }
+
+    reset() {
+        this.lane = 1;
+        this.playerX = this.laneX[1] || this.W * 0.5;
+        this.playerY = this.H * 0.78;
+        this.jumping = false;
+        this.ducking = false;
+        this.jumpT = 0;
+        this.duckT = 0;
+        this.trampolining = false;
+        this.trampolineT = 0;
+        this.speed = this.baseSpeed;
+        this.distance = 0;
+        this.coins = 0;
+        this.obstacles = [];
+        this.pearls = [];
+        this.bonuses = [];
+        this.particles = [];
+        this.spawnTimer = 0;
+        this.magnetTimer = 0;
+        this.shieldActive = false;
+        this.shieldFlash = 0;
+        this.waterOffset = 0;
+    }
+
+    bindInput() {
+        const c = this.canvas;
+        if (!c) return;
+        const self = this;
+        const onKD = (e) => { self._keys[e.key] = true; self.handleKey(e.key); };
+        const onKU = (e) => { self._keys[e.key] = false; };
+        const onTS = (e) => {
+            if (!e.touches || e.touches.length === 0) return;
+            const t = e.touches[0];
+            self._swipeStart = { x: t.clientX, y: t.clientY };
+        };
+        const onTE = (e) => {
+            if (!self._swipeStart) return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - self._swipeStart.x;
+            const dy = t.clientY - self._swipeStart.y;
+            const adx = Math.abs(dx), ady = Math.abs(dy);
+            if (Math.max(adx, ady) < 20) return;
+            if (adx > ady) {
+                if (dx > 0) self.moveLane(1); else self.moveLane(-1);
+            } else {
+                if (dy < 0) self.jump(); else self.duck();
+            }
+            self._swipeStart = null;
+            e.preventDefault();
+        };
+        c.addEventListener('touchstart', onTS, { passive: false });
+        c.addEventListener('touchend', onTE, { passive: false });
+        document.addEventListener('keydown', onKD);
+        document.addEventListener('keyup', onKU);
+        this._handlers = [
+            { el: c, ev: 'touchstart', fn: onTS },
+            { el: c, ev: 'touchend', fn: onTE },
+            { el: document, ev: 'keydown', fn: onKD },
+            { el: document, ev: 'keyup', fn: onKU }
+        ];
+        const close = document.getElementById('surfClose');
+        if (close) {
+            const fn = () => { this.stop(); if (this.parent.switchScreen) this.parent.switchScreen('minigamesScreen'); };
+            close.addEventListener('click', fn);
+            this._handlers.push({ el: close, ev: 'click', fn });
+        }
+        const restart = document.getElementById('surfRestart');
+        if (restart) {
+            const fn = () => { this.reset(); this.running = true; this._lastT = performance.now(); requestAnimationFrame((t) => this.loop(t)); };
+            restart.addEventListener('click', fn);
+            this._handlers.push({ el: restart, ev: 'click', fn });
+        }
+    }
+
+    unbindInput() {
+        for (const h of this._handlers) {
+            h.el.removeEventListener(h.ev, h.fn);
+        }
+        this._handlers = [];
+    }
+
+    handleKey(key) {
+        if (key === 'ArrowLeft' || key === 'a') this.moveLane(-1);
+        if (key === 'ArrowRight' || key === 'd') this.moveLane(1);
+        if (key === 'ArrowUp' || key === 'w') this.jump();
+        if (key === 'ArrowDown' || key === 's') this.duck();
+    }
+
+    moveLane(dir) {
+        if (this.trampolining) { this.lane = Math.max(0, Math.min(2, this.lane + dir)); return; }
+        this.lane = Math.max(0, Math.min(2, this.lane + dir));
+    }
+
+    jump() {
+        if (this.jumping || this.ducking || this.trampolining) return;
+        this.jumping = true;
+        this.jumpT = 0;
+    }
+
+    duck() {
+        if (this.jumping || this.ducking || this.trampolining) return;
+        this.ducking = true;
+        this.duckT = 0;
+        this.speed += 40;
+    }
+
+    // ---- SPAWNING ----
+    spawnObstacle() {
+        const types = ['reef', 'log', 'whale', 'crab', 'lifeRing'];
+        const weights = [0.22, 0.22, 0.16, 0.22, 0.18];
+        const r = Math.random();
+        let cum = 0, type = 'reef';
+        for (let i = 0; i < types.length; i++) { cum += weights[i]; if (r < cum) { type = types[i]; break; } }
+        const lane = Math.floor(Math.random() * 3);
+        const y = -40;
+        this.obstacles.push({ type, lane, x: this.laneX[lane], y, w: 50, h: 50, hit: false });
+    }
+
+    spawnPearls() {
+        const count = 3 + Math.floor(Math.random() * 5);
+        const lane = Math.floor(Math.random() * 3);
+        const startY = -40;
+        for (let i = 0; i < count; i++) {
+            this.pearls.push({
+                x: this.laneX[lane] + (Math.random() - 0.5) * 40,
+                y: startY - i * 45,
+                r: 8, collected: false, gold: Math.random() < 0.12
+            });
+        }
+    }
+
+    spawnBonus() {
+        const types = ['magnet', 'shield', 'trampoline'];
+        const type = types[Math.floor(Math.random() * 3)];
+        const lane = Math.floor(Math.random() * 3);
+        this.bonuses.push({ type, lane, x: this.laneX[lane], y: -40, r: 18, collected: false });
+    }
+
+    spawnParticles(x, y, color, count) {
+        for (let i = 0; i < count; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const s = 30 + Math.random() * 80;
+            this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, life: 0.4 + Math.random() * 0.3, maxLife: 0.7, color });
+        }
+    }
+
+    // ---- COLLISION ----
+    playerHitbox() {
+        const pw = 40, ph = this.ducking ? 30 : (this.jumping ? 50 : 70);
+        const py = this.jumping ? this.playerY - 60 : (this.ducking ? this.playerY + 10 : this.playerY - 20);
+        return { x: this.playerX - pw/2, y: py - ph/2, w: pw, h: ph };
+    }
+
+    rectsOverlap(a, b) {
+        return !(a.x + a.w < b.x - b.w/2 || a.x > b.x + b.w/2 || a.y + a.h < b.y - b.h/2 || a.y > b.y + b.h/2);
+    }
+
+    // ---- GAME LOOP ----
+    loop(t) {
+        if (!this.running) return;
+        const dt = Math.min(0.05, (t - this._lastT) / 1000);
+        this._lastT = t;
+        this.step(dt);
+        this.draw();
+        requestAnimationFrame((tt) => this.loop(tt));
+    }
+
+    step(dt) {
+        // Speed ramp
+        this.speed = Math.min(this.maxSpeed, this.baseSpeed + this.distance * 0.012);
+        this.distance += this.speed * dt;
+        this.waterOffset = (this.waterOffset + this.speed * dt) % 60;
+
+        // Lane interpolation
+        const targetX = this.laneX[this.lane];
+        this.playerX += (targetX - this.playerX) * Math.min(1, dt * 10);
+
+        // Jump
+        if (this.jumping) {
+            this.jumpT += dt;
+            if (this.jumpT >= this.jumpDur) { this.jumping = false; this.jumpT = 0; }
+        }
+        // Duck
+        if (this.ducking) {
+            this.duckT += dt;
+            if (this.duckT >= this.duckDur) { this.ducking = false; this.duckT = 0; }
+        }
+        // Trampoline
+        if (this.trampolining) {
+            this.trampolineT += dt;
+            if (this.trampolineT >= this.trampolineDur) { this.trampolining = false; this.trampolineT = 0; }
+        }
+
+        // Magnet timer
+        if (this.magnetTimer > 0) {
+            this.magnetTimer = Math.max(0, this.magnetTimer - dt);
+        }
+        // Shield flash
+        if (this.shieldActive) this.shieldFlash += dt;
+
+        // Move objects down (toward player)
+        const moveDy = this.speed * dt;
+        for (const o of this.obstacles) o.y += moveDy;
+        for (const p of this.pearls) p.y += moveDy;
+        for (const b of this.bonuses) b.y += moveDy;
+
+        // Spawn
+        this.spawnTimer += dt;
+        const interval = Math.max(0.5, this.spawnInterval - this.distance * 0.0004);
+        if (this.spawnTimer >= interval) {
+            this.spawnTimer = 0;
+            const r = Math.random();
+            if (r < 0.55) this.spawnObstacle();
+            else if (r < 0.85) this.spawnPearls();
+            else this.spawnBonus();
+        }
+
+        // Collect pearls
+        const ph = this.playerHitbox();
+        for (const p of this.pearls) {
+            if (p.collected) continue;
+            const dist = Math.hypot(this.playerX - p.x, (this.playerY - 35) - p.y);
+            const collectRange = this.magnetTimer > 0 ? 140 : 32;
+            if (dist < collectRange) {
+                p.collected = true;
+                this.coins += p.gold ? 8 : 1;
+                this.spawnParticles(p.x, p.y, p.gold ? '#ffd700' : '#ffeef0', 4);
+                if (this.magnetTimer > 0 && dist > 40) {
+                    p.x += (this.playerX - p.x) * 0.3;
+                    p.y += ((this.playerY - 35) - p.y) * 0.3;
+                }
+            }
+        }
+
+        // Collect bonuses
+        for (const b of this.bonuses) {
+            if (b.collected) continue;
+            const dist = Math.hypot(this.playerX - b.x, (this.playerY - 35) - b.y);
+            if (dist < 35) {
+                b.collected = true;
+                if (b.type === 'magnet') { this.magnetTimer = 10; this.spawnParticles(b.x, b.y, '#4dc9f6', 10); }
+                else if (b.type === 'shield') { this.shieldActive = true; this.shieldFlash = 0; this.spawnParticles(b.x, b.y, '#7cfc00', 10); }
+                else if (b.type === 'trampoline') { this.trampolining = true; this.trampolineT = 0; this.spawnParticles(b.x, b.y, '#ff8c00', 15); }
+            }
+        }
+
+        // Collisions with obstacles
+        for (const o of this.obstacles) {
+            if (o.hit) continue;
+            const ob = { x: o.x - o.w/2, y: o.y - o.h/2, w: o.w, h: o.h };
+            const pb = this.playerHitbox();
+            if (!this.rectsOverlap(pb, { x: o.x - o.w/2, y: o.y - o.h/2, w: o.w, h: o.h })) continue;
+
+            let fatal = true;
+            // Check if correct avoidance action is active
+            if (o.type === 'log' && this.jumping) fatal = false;
+            if (o.type === 'whale' && this.ducking) fatal = false;
+            if (o.type === 'reef' || o.type === 'crab') {
+                if (this.jumping) fatal = false;
+            }
+            if (o.type === 'lifeRing') fatal = false;
+            if (this.trampolining) fatal = false;
+
+            if (fatal && this.shieldActive) {
+                this.shieldActive = false;
+                this.spawnParticles(o.x, o.y, '#7cfc00', 20);
+                fatal = false;
+                o.hit = true;
+            }
+
+            if (fatal) {
+                this.gameOver();
+                return;
+            }
+        }
+
+        // Update particles
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.life -= dt;
+            if (p.life <= 0) { this.particles.splice(i, 1); continue; }
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vy += 120 * dt;
+        }
+
+        // Cleanup off-screen objects
+        this.obstacles = this.obstacles.filter(o => o.y < this.H + 100 && !o.hit);
+        this.pearls = this.pearls.filter(p => p.y < this.H + 60 && !p.collected);
+        this.bonuses = this.bonuses.filter(b => b.y < this.H + 60 && !b.collected);
+
+        // Update HUD
+        this.updateHUD();
+    }
+
+    gameOver() {
+        this.running = false;
+        if (this.distance > this.bestDistance) {
+            this.bestDistance = this.distance;
+            try { localStorage.setItem('surfBestDist', this.bestDistance); } catch(e) {}
+        }
+        document.getElementById('surfGameOver').style.display = 'flex';
+        document.getElementById('surfFinalDist').textContent = Math.floor(this.distance);
+        document.getElementById('surfFinalCoins').textContent = this.coins;
+    }
+
+    updateHUD() {
+        const $ = (id) => document.getElementById(id);
+        const d = $('surfDist'), c = $('surfCoins'), m = $('surfMagnet'), s = $('surfShield');
+        if (d) d.textContent = Math.floor(this.distance) + 'm';
+        if (c) c.textContent = this.coins;
+        if (m) m.style.display = this.magnetTimer > 0 ? 'inline' : 'none';
+        if (s) s.style.display = this.shieldActive ? 'inline' : 'none';
+    }
+
+    // ---- RENDER ----
+    draw() {
+        const ctx = this.ctx;
+        const W = this.W, H = this.H;
+        if (!ctx) return;
+
+        // Sky gradient
+        const sky = ctx.createLinearGradient(0, 0, 0, H * 0.55);
+        sky.addColorStop(0, '#1a8fcf');
+        sky.addColorStop(0.6, '#5dbce8');
+        sky.addColorStop(1, '#a3dff5');
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, W, H);
+
+        // Sun
+        ctx.fillStyle = 'rgba(255,240,180,0.7)';
+        ctx.beginPath();
+        ctx.arc(W * 0.78, H * 0.13, 40, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,220,0.4)';
+        ctx.beginPath();
+        ctx.arc(W * 0.78, H * 0.13, 55, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Clouds
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        this.drawCloud(ctx, W * 0.15, H * 0.10, 1);
+        this.drawCloud(ctx, W * 0.55, H * 0.06, 0.7);
+        this.drawCloud(ctx, W * 0.42, H * 0.16, 0.5);
+
+        // Ocean gradient
+        const sea = ctx.createLinearGradient(0, H * 0.45, 0, H);
+        sea.addColorStop(0, '#1a7ab5');
+        sea.addColorStop(0.3, '#0d6aa0');
+        sea.addColorStop(0.7, '#0a5088');
+        sea.addColorStop(1, '#063a5e');
+        ctx.fillStyle = sea;
+        ctx.fillRect(0, H * 0.48, W, H * 0.52);
+
+        // Waves
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 8; i++) {
+            const wy = H * 0.50 + i * 28;
+            ctx.beginPath();
+            for (let x = 0; x <= W; x += 5) {
+                const yy = wy + Math.sin((x + this.waterOffset) * 0.04 + i * 1.5) * 8;
+                if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+            }
+            ctx.stroke();
+        }
+
+        // Lane markers (buoy-like dashed lines)
+        ctx.setLineDash([10, 20]);
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 2;
+        for (let ln = 1; ln <= 2; ln++) {
+            const lx = this.laneX[0] + ln * (this.laneX[2] - this.laneX[0]) / 2;
+            ctx.beginPath();
+            ctx.moveTo(lx, H * 0.50);
+            ctx.lineTo(lx, H);
+            ctx.stroke();
+        }
+        ctx.setLineDash([]);
+
+        // Draw pearls
+        for (const p of this.pearls) {
+            if (p.collected || p.y < -20) continue;
+            ctx.fillStyle = p.gold ? '#ffd700' : '#f0e6f6';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = p.gold ? '#b8960b' : '#c8b8d0';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            // Shine
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.beginPath();
+            ctx.arc(p.x - 2, p.y - 3, p.r * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Draw bonuses
+        for (const b of this.bonuses) {
+            if (b.collected || b.y < -20) continue;
+            const pulse = 1 + Math.sin(Date.now() / 300) * 0.2;
+            if (b.type === 'magnet') {
+                ctx.fillStyle = '#4dc9f6';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r * pulse, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('🧲', b.x, b.y + 5);
+            } else if (b.type === 'shield') {
+                const grad = ctx.createRadialGradient(b.x, b.y, b.r*0.3, b.x, b.y, b.r * pulse);
+                grad.addColorStop(0, 'rgba(124,252,0,0.8)');
+                grad.addColorStop(1, 'rgba(124,252,0,0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r * pulse, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.fillText('🛡', b.x, b.y + 5);
+            } else if (b.type === 'trampoline') {
+                ctx.fillStyle = '#ff8c00';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r * pulse, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.fillText('🔼', b.x, b.y + 5);
+            }
+            ctx.textAlign = 'start';
+        }
+
+        // Draw obstacles
+        for (const o of this.obstacles) {
+            if (o.y < -50) continue;
+            ctx.save();
+            ctx.translate(o.x, o.y);
+            if (o.type === 'reef') this.drawReef(ctx, o);
+            else if (o.type === 'log') this.drawLog(ctx, o);
+            else if (o.type === 'whale') this.drawWhale(ctx, o);
+            else if (o.type === 'crab') this.drawCrab(ctx, o);
+            else if (o.type === 'lifeRing') this.drawLifeRing(ctx, o);
+            ctx.restore();
+        }
+
+        // Draw player (surfer pet on board)
+        this.drawPlayer(ctx);
+
+        // Shield glow
+        if (this.shieldActive) {
+            const pulse = 1 + Math.sin(this.shieldFlash * 8) * 0.1;
+            const grad = ctx.createRadialGradient(this.playerX, this.playerY - 30, 20, this.playerX, this.playerY - 30, 55 * pulse);
+            grad.addColorStop(0, 'rgba(124,252,0,0.15)');
+            grad.addColorStop(1, 'rgba(124,252,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(this.playerX, this.playerY - 30, 55 * pulse, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Magnet field
+        if (this.magnetTimer > 0) {
+            const pulse = 1 + Math.sin(Date.now() / 200) * 0.15;
+            ctx.strokeStyle = 'rgba(77,201,246,0.4)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 10]);
+            ctx.beginPath();
+            ctx.arc(this.playerX, this.playerY - 30, 140 * pulse, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Particles
+        for (const p of this.particles) {
+            const a = p.life / p.maxLife;
+            ctx.fillStyle = p.color.replace(')', ',' + a + ')').replace('rgb', 'rgba');
+            if (!p.color.includes('rgba')) ctx.globalAlpha = a;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 4 * a, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    drawCloud(ctx, x, y, scale) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        ctx.beginPath();
+        ctx.arc(0, 0, 20, 0, Math.PI * 2);
+        ctx.arc(25, -5, 25, 0, Math.PI * 2);
+        ctx.arc(50, 0, 20, 0, Math.PI * 2);
+        ctx.arc(20, 8, 18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    drawReef(ctx, o) {
+        ctx.fillStyle = '#6b3a2a';
+        ctx.beginPath();
+        ctx.moveTo(-15, 15);
+        ctx.lineTo(-8, -20);
+        ctx.lineTo(0, -28);
+        ctx.lineTo(8, -20);
+        ctx.lineTo(15, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#4a2010';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    drawLog(ctx, o) {
+        ctx.fillStyle = '#8B6914';
+        ctx.fillRect(-35, -8, 70, 16);
+        ctx.strokeStyle = '#5a4508';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-35, -8, 70, 16);
+        ctx.strokeStyle = '#6b5010';
+        ctx.beginPath();
+        ctx.moveTo(-20, -8); ctx.lineTo(-20, 8);
+        ctx.moveTo(0, -8); ctx.lineTo(0, 8);
+        ctx.moveTo(20, -8); ctx.lineTo(20, 8);
+        ctx.stroke();
+    }
+
+    drawWhale(ctx, o) {
+        ctx.fillStyle = '#3a5f8a';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 40, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#2a4a6a';
+        ctx.beginPath();
+        ctx.ellipse(0, 10, 30, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(-25, -5, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-25, -5, 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Spout
+        ctx.strokeStyle = '#a0d0f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-10, -16);
+        ctx.lineTo(-10, -28);
+        ctx.stroke();
+        ctx.fillStyle = '#a0d0f0';
+        ctx.beginPath();
+        ctx.arc(-10, -30, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawCrab(ctx, o) {
+        ctx.fillStyle = '#e04030';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 20, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Claws
+        ctx.strokeStyle = '#e04030';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-22, -8); ctx.lineTo(-32, -18);
+        ctx.moveTo(-32, -18); ctx.lineTo(-28, -22);
+        ctx.moveTo(22, -8); ctx.lineTo(32, -18);
+        ctx.moveTo(32, -18); ctx.lineTo(28, -22);
+        ctx.stroke();
+        // Eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(-7, -6, 4, 0, Math.PI * 2);
+        ctx.arc(7, -6, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-7, -6, 2, 0, Math.PI * 2);
+        ctx.arc(7, -6, 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawLifeRing(ctx, o) {
+        ctx.strokeStyle = '#ff6020';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 22, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(0, -3, 16, Math.PI * 0.4, Math.PI * 1.1);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 3, 16, Math.PI * 1.6, Math.PI * 0.4);
+        ctx.stroke();
+    }
+
+    drawPlayer(ctx) {
+        const x = this.playerX;
+        let y = this.playerY;
+        if (this.jumping) {
+            const t = this.jumpT / this.jumpDur;
+            y -= Math.sin(t * Math.PI) * 70;
+        }
+        if (this.trampolining) {
+            const t = this.trampolineT / this.trampolineDur;
+            y -= Math.sin(t * Math.PI) * 140;
+        }
+
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Surfboard
+        ctx.fillStyle = '#f5a623';
+        ctx.beginPath();
+        ctx.moveTo(-35, 10);
+        ctx.quadraticCurveTo(-20, 18, 20, 18);
+        ctx.quadraticCurveTo(35, 14, 38, 8);
+        ctx.quadraticCurveTo(30, 6, 20, 8);
+        ctx.quadraticCurveTo(0, 4, -20, 8);
+        ctx.quadraticCurveTo(-30, 6, -38, 8);
+        ctx.quadraticCurveTo(-35, 10, -35, 10);
+        ctx.fill();
+        ctx.strokeStyle = '#d4891a';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // Stripe
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-15, 11);
+        ctx.lineTo(15, 11);
+        ctx.stroke();
+
+        // Body (demon cat style)
+        const sc = 0.5;
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(0, -8, 22 * sc * 2, 28 * sc * 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Belly
+        ctx.fillStyle = '#ff9999';
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 14 * sc * 2, 16 * sc * 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Head
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(0, -30, 18 * sc * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ears
+        ctx.beginPath();
+        ctx.moveTo(-12, -40);
+        ctx.lineTo(-4, -55);
+        ctx.lineTo(0, -38);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(12, -40);
+        ctx.lineTo(4, -55);
+        ctx.lineTo(0, -38);
+        ctx.closePath();
+        ctx.fill();
+
+        // Eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(-6, -34, 6 * sc * 2, 0, Math.PI * 2);
+        ctx.arc(6, -34, 6 * sc * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-6, -34, 3 * sc * 2, 0, Math.PI * 2);
+        ctx.arc(6, -34, 3 * sc * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Nose
+        ctx.fillStyle = '#c0392b';
+        ctx.beginPath();
+        ctx.moveTo(0, -28);
+        ctx.lineTo(-3, -25);
+        ctx.lineTo(3, -25);
+        ctx.closePath();
+        ctx.fill();
+
+        // Whiskers
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 1.5;
+        for (let s = -1; s <= 1; s += 2) {
+            ctx.beginPath();
+            ctx.moveTo(s * 8, -28);
+            ctx.lineTo(s * 22, -32);
+            ctx.moveTo(s * 8, -26);
+            ctx.lineTo(s * 22, -26);
+            ctx.moveTo(s * 8, -24);
+            ctx.lineTo(s * 22, -20);
+            ctx.stroke();
+        }
+
+        // Water splash under board
+        ctx.fillStyle = 'rgba(200,230,255,0.5)';
+        ctx.beginPath();
+        ctx.arc(-25, 20, 6, 0, Math.PI);
+        ctx.arc(0, 22, 8, 0, Math.PI);
+        ctx.arc(25, 20, 6, 0, Math.PI);
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
 window.addEventListener('load', () => {
     game.init();
 });

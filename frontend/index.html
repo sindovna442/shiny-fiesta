@@ -194,6 +194,11 @@
                     <div class="minigame-name">Судоку</div>
                     <div class="minigame-desc">Логическая головоломка</div>
                 </div>
+                <div class="minigame-card surf-minigame-card" onclick="game.startMinigame('surf')">
+                    <div class="minigame-icon">🌊</div>
+                    <div class="minigame-name">Морской Сёрф</div>
+                    <div class="minigame-desc">3D-раннер на волнах!</div>
+                </div>
                 <div class="minigame-card" onclick="game.startMinigame('hellfire')">
                     <div class="minigame-icon">🔥</div>
                     <div class="minigame-name">HELLFIRE BALLS</div>
@@ -203,7 +208,31 @@
         </div>
 
         <!-- 🔥 HELLFIRE BALLS — адская арена (полный экран) -->
-<div id="hellfireScreen" class="hellfire-screen" style="display:none;">
+    <!-- Морской Сёрф -->
+    <div id="surfScreen" class="screen" style="display:none;padding:0;background:#0a3060;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;background:rgba(0,0,0,0.3);">
+            <button id="surfClose" class="back-btn" style="background:rgba(255,255,255,0.15);color:#fff;">← Мини-игры</button>
+            <span style="color:#fff;font-size:18px;font-weight:bold;">🌊 Морской Сёрф</span>
+            <div style="display:flex;gap:15px;align-items:center;">
+                <span id="surfCoins" style="color:#ffd700;font-weight:bold;">0</span>
+                <span style="color:#fff;">🦪</span>
+                <span id="surfDist" style="color:#fff;">0m</span>
+                <span id="surfMagnet" style="display:none;color:#4dc9f6;">🧲</span>
+                <span id="surfShield" style="display:none;color:#7cfc00;">🛡</span>
+            </div>
+        </div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;">
+            <canvas id="surfCanvas" style="width:100%;height:100%;"></canvas>
+            <div id="surfGameOver" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);flex-direction:column;align-items:center;justify-content:center;z-index:10;">
+                <h2 style="color:#ff6030;font-size:36px;margin-bottom:10px;">💀 Game Over</h2>
+                <p style="color:#fff;font-size:18px;margin:5px 0;">Дистанция: <span id="surfFinalDist" style="color:#ffd700;">0</span>m</p>
+                <p style="color:#fff;font-size:18px;margin:5px 0;">Монеты: <span id="surfFinalCoins" style="color:#ffd700;">0</span></p>
+                <button id="surfRestart" style="margin-top:20px;padding:12px 30px;font-size:18px;background:#4dc9f6;color:#fff;border:none;border-radius:25px;cursor:pointer;">🔄 Заново</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="hellfireScreen" class="hellfire-screen" style="display:none;">
     <div class="hellfire-stage">
         <canvas id="hellfireCanvas" class="hellfire-canvas"></canvas>
         <div class="hellfire-hud">

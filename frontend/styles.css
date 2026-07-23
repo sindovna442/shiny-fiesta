@@ -1334,3 +1334,9 @@ body {
 }
 
 .hellfire-minigame-card.call-hellfire .minigame-icon { color: #ff6030; }
+
+
+/* ===== Морской Сёрф ===== */
+.surf-minigame-card { background: linear-gradient(135deg, #0a5088, #1a8fcf); border: 1px solid #0d6aa0; }
+.surf-minigame-card:hover { background: linear-gradient(135deg, #0d6aa0, #22a0e0); transform: translateY(-3px); }
+.surf-minigame-card .minigame-icon { color: #ffd700; }
