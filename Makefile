@@ -28,7 +28,7 @@ build:
 # so the wrapper's empty-port case still serves on 5000 instead of crashing.
 # `flask run` is used so we bypass app.py's __main__ hardcoded config.
 dev:
-	FLASK_APP=backend/app.py $(VENV)/bin/flask run --host=$(HOST) --port=$(PORT)
+	FLASK_APP=backend/app.py $(VENV)/bin/flask run --host=$(HOST) --port=$${PORT:-5000}
 
 # Convenience for local direct launches — reads HOST/PORT/FLASK_DEBUG
 # from the environment (see `.env.example`).
