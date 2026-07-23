@@ -389,7 +389,7 @@ const game = {
                 if (item.action !== 'toggleBath' && item.action !== 'toggleBed') {
                     this.spawnParticles(item.type, itemX, itemY);
                 }
-                this[item.action]();
+                this.movePetToItem(item);
                 return;
             }
         }
@@ -846,6 +846,35 @@ const game = {
         this.drawPet();
     },
 
+    movePetToItem(item) {
+        const room = this.rooms[this.currentRoom];
+        const offsets = {
+            foodBowl: [-0.10, -0.05],
+            bathtub:  [-0.08, -0.05],
+            bed:      [-0.10,  0.05]
+        };
+        const [dx, dy] = offsets[item.type] || [-0.10, -0.05];
+        const tx = Math.max(0.08, Math.min(0.92, item.x + dx));
+        const ty = Math.max(0.12, Math.min(0.88, item.y + dy));
+        const dur = 400;
+        const t0 = performance.now();
+        const startX = room.petX;
+        const startY = room.petY;
+        const self = this;
+        const step = () => {
+            const t = Math.min(1, (performance.now() - t0) / dur);
+            room.petX = startX + (tx - startX) * t;
+            room.petY = startY + (ty - startY) * t;
+            if (t < 1 && self._mainScreenActive) {
+                requestAnimationFrame(step);
+            } else {
+                self.spawnParticles(item.type, 0, 0);
+                self[item.action]();
+            }
+        };
+        requestAnimationFrame(step);
+    },
+
     // Рисование питомца на Canvas
     drawPet() {
         const canvas = document.getElementById('petCanvas');
@@ -865,6 +894,16 @@ const game = {
         const petX = canvas.width * room.petX;
         const petY = canvas.height * room.petY;
         this.drawDemonCat(ctx, petX, petY);
+
+        // Когда предмет перетаскивают — перерисовываем его ПОВЕРХ кота,
+        // чтобы еда/ванна/кровать визуально были впереди во время drag.
+        if (this.dragState && this.dragState.active && this.dragState.type === 'item') {
+            const prevHover = this.hoveredItem;
+            this.hoveredItem = null;
+            this.drawRoomElements(ctx, canvas.width, canvas.height);
+            this.hoveredItem = prevHover;
+        }
+
         
         // Рисуем частицы поверх всего
         this.updateAndDrawParticles(ctx);
@@ -1445,6 +1484,38 @@ const game = {
         // Голова — круг
         ctx.fillStyle = '#e74c3c';
         ctx.beginPath();
+        // === КОШАЧЬИ ЧАСТИ В ВАННЕ (торс выглядывает над водой + лапы держат бортик) ===
+        // Торсовая часть (верхняя половина тела видна над уровнем воды)
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(x, y + 8 * scale, 56 * scale, 18 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Животик (светло-розовый, между торсом и бортиком)
+        ctx.fillStyle = '#ff9999';
+        ctx.beginPath();
+        ctx.ellipse(x, y + 12 * scale, 40 * scale, 10 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Передние лапы на бортике ванны (клешни симметрично)
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(x - 50 * scale, y - 18 * scale, 14 * scale, 22 * scale, -0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(x + 50 * scale, y - 18 * scale, 14 * scale, 22 * scale, 0.25, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Пальчики на передних лапах
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.ellipse(x - 56 * scale + i * 6 * scale, y - 38 * scale, 4 * scale, 6 * scale, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 44 * scale + i * 6 * scale, y - 38 * scale, 4 * scale, 6 * scale, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
         ctx.arc(x, y - 55 * scale + breath, 55 * scale, 0, Math.PI * 2);
         ctx.fill();
         
