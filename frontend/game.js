@@ -114,118 +114,93 @@ const game = {
         }
     },
 
-    // Генерация звука мяуканья
+    // Генерация звука лопанья пузырька (мягкий)
     playMeow() {
         if (!this.audioCtx) return;
-        
-        // Возобновляем контекст если заблокирован
-        if (this.audioCtx.state === 'suspended') {
-            this.audioCtx.resume();
-        }
-        
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
         const now = this.audioCtx.currentTime;
-        
-        // Основной тон мяуканья (частота меняется)
+        // Основной «хлопок» — резкий спад частоты
         const osc = this.audioCtx.createOscillator();
         const gain = this.audioCtx.createGain();
-        
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, now);
-        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
-        osc.frequency.exponentialRampToValueAtTime(600, now + 0.3);
-        
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-        
+        osc.frequency.setValueAtTime(1800, now);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.06);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
-        
         osc.start(now);
-        osc.stop(now + 0.4);
-        
-        // Второй тон для более реалистичного звука
+        osc.stop(now + 0.13);
+        // Второй пузырёк чуть позже и выше
         const osc2 = this.audioCtx.createOscillator();
         const gain2 = this.audioCtx.createGain();
-        
-        osc2.type = 'triangle';
-        osc2.frequency.setValueAtTime(900, now + 0.05);
-        osc2.frequency.exponentialRampToValueAtTime(1400, now + 0.15);
-        osc2.frequency.exponentialRampToValueAtTime(500, now + 0.35);
-        
-        gain2.gain.setValueAtTime(0.15, now + 0.05);
-        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
-        
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(2200, now + 0.04);
+        osc2.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+        gain2.gain.setValueAtTime(0.12, now + 0.04);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
         osc2.connect(gain2);
         gain2.connect(this.audioCtx.destination);
-        
-        osc2.start(now + 0.05);
-        osc2.stop(now + 0.45);
+        osc2.start(now + 0.04);
+        osc2.stop(now + 0.15);
     },
 
-    // Звук мурчания
+    // Звук серии лопающихся пузырьков (много маленьких)
     playPurr() {
         if (!this.audioCtx) return;
-        
-        if (this.audioCtx.state === 'suspended') {
-            this.audioCtx.resume();
-        }
-        
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
         const now = this.audioCtx.currentTime;
-        
-        // Низкочастотное мурчание
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        const lfo = this.audioCtx.createOscillator();
-        const lfoGain = this.audioCtx.createGain();
-        
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(25, now);
-        
-        lfo.type = 'sine';
-        lfo.frequency.setValueAtTime(20, now);
-        lfoGain.gain.setValueAtTime(10, now);
-        
-        lfo.connect(lfoGain);
-        lfoGain.connect(osc.frequency);
-        
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.linearRampToValueAtTime(0.15, now + 0.3);
-        gain.gain.linearRampToValueAtTime(0.01, now + 0.8);
-        
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        
-        osc.start(now);
-        osc.stop(now + 0.8);
-        lfo.start(now);
-        lfo.stop(now + 0.8);
+        // 6-8 крошечных пузырьков в быстрой последовательности
+        for (let i = 0; i < 7; i++) {
+            const t = now + i * 0.07 + Math.random() * 0.03;
+            const freq = 2500 + Math.random() * 1500;
+            const osc = this.audioCtx.createOscillator();
+            const g = this.audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, t);
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.15, t + 0.05);
+            g.gain.setValueAtTime(0.08 + Math.random() * 0.06, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+            osc.connect(g);
+            g.connect(this.audioCtx.destination);
+            osc.start(t);
+            osc.stop(t + 0.09);
+        }
     },
 
-    // Звук недовольного кота
+    // Звук громкого лопанья большого пузыря
     playAngryMeow() {
         if (!this.audioCtx) return;
-        
-        if (this.audioCtx.state === 'suspended') {
-            this.audioCtx.resume();
-        }
-        
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
         const now = this.audioCtx.currentTime;
-        
+        // Большой пузырь — глубокий хлопок
         const osc = this.audioCtx.createOscillator();
         const gain = this.audioCtx.createGain();
-        
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(400, now);
-        osc.frequency.linearRampToValueAtTime(200, now + 0.3);
-        
-        gain.gain.setValueAtTime(0.2, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(900, now);
+        osc.frequency.exponentialRampToValueAtTime(120, now + 0.07);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
-        
         osc.start(now);
-        osc.stop(now + 0.35);
+        osc.stop(now + 0.16);
+        // Брызги — несколько мелких пузырьков-осколков
+        for (let i = 0; i < 4; i++) {
+            const t = now + 0.02 + i * 0.03;
+            const f = 3000 + Math.random() * 2000;
+            const o = this.audioCtx.createOscillator();
+            const g = this.audioCtx.createGain();
+            o.type = 'sine';
+            o.frequency.setValueAtTime(f, t);
+            o.frequency.exponentialRampToValueAtTime(f * 0.1, t + 0.04);
+            g.gain.setValueAtTime(0.1, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+            o.connect(g);
+            g.connect(this.audioCtx.destination);
+            o.start(t);
+            o.stop(t + 0.07);
+        }
     },
 
     // Получить случайную реакцию
