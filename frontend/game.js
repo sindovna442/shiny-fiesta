@@ -2157,6 +2157,11 @@ const game = {
         this.gameScore = 0;
         this.currentGame = gameName;
         document.getElementById('gameScore').textContent = '0';
+        if (gameName === 'chef') {
+            if (!this._chef) this._chef = new ChefGame(this);
+            this._chef.start();
+            return;
+        }
         if (gameName === 'surf') {
             if (!this._surf) this._surf = new SurfGame(this);
             this._surf.start();
@@ -5030,6 +5035,847 @@ class SurfGame {
         ctx.fill();
 
         ctx.restore();
+    }
+}
+
+
+// ========== MINIGAME: CHEF COOK (creative cooking sandbox) ==========
+class ChefGame {
+    constructor(parent) {
+        this.parent = parent;
+        this.canvas = null;
+        this.ctx = null;
+        this.W = 0;
+        this.H = 0;
+        this.stage = 0; // 0=select base, 1=customize, 2=feed
+        this.base = null; // 'pizza', 'burger', 'cake'
+        this.customStep = 0; // sub-step within customization
+        this.ingredients = []; // placed ingredients on dish
+        this.feedPieces = []; // pieces for feeding
+        this.feedIndex = 0;
+        this.dragItem = null;
+        this.dragX = 0;
+        this.dragY = 0;
+        this.dragging = false;
+        this._animFrame = null;
+        this._lastT = 0;
+        this.hoverR = 0;
+        this.feedChewT = 0;
+        this.feedReaction = null; // 'default','fire','belly','hearts'
+        this.feedReactionT = 0;
+        this.satiety = 0;
+        this.scrollX = 0;
+        this.maxScrollX = 0;
+        this.touchStartX = 0;
+        this.touchStartY = 0;
+        this.wasTap = false;
+        this.sauceMode = null; // 'tomato','cheese' for pizza, 'ketchup','mustard','mayo' for burger
+        this.glazeColor = null; // for cake
+        this.frostingType = null; // for cake
+        this.baked = false;
+
+        // Ingredient definitions with tags
+        this.allIngredients = {
+            pizza: {
+                sauces: [
+                    {id:'tomato',name:'Томатный соус',emoji:'🍅',color:'#c0392b',tags:{savory:2}},
+                    {id:'cheese_sauce',name:'Сырный соус',emoji:'🧀',color:'#f5deb3',tags:{creamy:2}}
+                ],
+                toppings: [
+                    {id:'pepperoni',name:'Пепперони',emoji:'🍖',color:'#8b0000',tags:{spicy:2,meaty:1},count:10},
+                    {id:'mushroom',name:'Грибы',emoji:'🍄',color:'#d2b48c',tags:{earthy:1},count:10},
+                    {id:'cheese',name:'Сыр',emoji:'🧀',color:'#ffd700',tags:{creamy:2},count:10},
+                    {id:'olives',name:'Оливки',emoji:'🫒',color:'#556b2f',tags:{savory:1},count:10},
+                    {id:'greens',name:'Зелень',emoji:'🌿',color:'#228b22',tags:{fresh:1},count:8}
+                ]
+            },
+            burger: {
+                patties: [
+                    {id:'meat',name:'Мясная котлета',emoji:'🥩',color:'#8b4513',tags:{meaty:2,size:2}},
+                    {id:'fish',name:'Рыбная котлета',emoji:'🐟',color:'#f4a460',tags:{fishy:1,size:2}},
+                    {id:'vegan',name:'Веганская котлета',emoji:'🥬',color:'#6b8e23',tags:{fresh:2,size:2}}
+                ],
+                layers: [
+                    {id:'cheese_slice',name:'Сырный ломтик',emoji:'🧀',color:'#ffd700',tags:{creamy:1},count:8},
+                    {id:'bacon',name:'Бекон',emoji:'🥓',color:'#cd5c5c',tags:{salty:2,spicy:1},count:6},
+                    {id:'lettuce',name:'Салат',emoji:'🥬',color:'#32cd32',tags:{fresh:2},count:8},
+                    {id:'tomato_slice',name:'Помидор',emoji:'🍅',color:'#dc143c',tags:{fresh:1},count:8},
+                    {id:'onion_rings',name:'Лук кольца',emoji:'🧅',color:'#dda0dd',tags:{spicy:1},count:8}
+                ],
+                sauces: [
+                    {id:'ketchup',name:'Кетчуп',emoji:'🫗',color:'#cc0000',tags:{sweet:1}},
+                    {id:'mustard',name:'Горчица',emoji:'🫗',color:'#ffd700',tags:{spicy:1}},
+                    {id:'mayo',name:'Майонез',emoji:'🫗',color:'#fffacd',tags:{creamy:1}}
+                ]
+            },
+            cake: {
+                glazeColors: [
+                    {id:'pink',name:'Розовая',color:'#ff69b4'},
+                    {id:'chocolate',name:'Шоколадная',color:'#5c3317'},
+                    {id:'white',name:'Белая',color:'#fffafa'},
+                    {id:'blue',name:'Голубая',color:'#87ceeb'},
+                    {id:'yellow',name:'Жёлтая',color:'#ffd700'}
+                ],
+                frostings: [
+                    {id:'strawberry',name:'Клубничный крем',emoji:'🍓',color:'#ff69b4',tags:{sweet:2}},
+                    {id:'choc_cream',name:'Шоколадный крем',emoji:'🍫',color:'#5c3317',tags:{sweet:2}},
+                    {id:'vanilla',name:'Ванильный крем',emoji:'🍦',color:'#f5f5dc',tags:{sweet:1}}
+                ],
+                toppings: [
+                    {id:'berries',name:'Ягоды',emoji:'🫐',color:'#8b008b',tags:{sweet:1,fresh:1},count:15},
+                    {id:'sprinkles',name:'Посыпка',emoji:'🌈',color:'#ff69b4',tags:{sweet:2},count:20},
+                    {id:'gummy',name:'Мармеладки',emoji:'🐻',color:'#ff4500',tags:{sweet:2},count:10},
+                    {id:'choc_fig',name:'Шок. фигурки',emoji:'🍫',color:'#8b4513',tags:{sweet:1},count:8},
+                    {id:'candles',name:'Свечки',emoji:'🕯️',color:'#ff6347',tags:{festive:1},count:6}
+                ]
+            }
+        };
+
+        // Current available ingredients for the strip
+        this.currentIngredients = [];
+    }
+
+    start() {
+        const el = document.getElementById('chefScreen');
+        if (!el) return;
+        el.style.display = 'flex';
+        this.canvas = document.getElementById('chefCanvas');
+        if (!this.canvas) return;
+        this.fitCanvas();
+        this.ctx = this.canvas.getContext('2d');
+        this.stage = 0;
+        this.base = null;
+        this.customStep = 0;
+        this.ingredients = [];
+        this.baked = false;
+        this.satiety = 0;
+        this.scrollX = 0;
+        this.dragging = false;
+        this.dragItem = null;
+        this.showStage();
+        this.bindInput();
+        this._lastT = performance.now();
+        this._animFrame = requestAnimationFrame((t) => this.loop(t));
+    }
+
+    stop() {
+        if (this._animFrame) cancelAnimationFrame(this._animFrame);
+        this._animFrame = null;
+        this.unbindInput();
+        const el = document.getElementById('chefScreen');
+        if (el) el.style.display = 'none';
+    }
+
+    fitCanvas() {
+        const el = document.getElementById('chefScreen');
+        if (!el || !this.canvas) return;
+        const rect = el.getBoundingClientRect();
+        const w = rect.width || 600;
+        const h = rect.height - 60 || 500;
+        this.W = w;
+        this.H = h;
+        this.canvas.width = w;
+        this.canvas.height = h;
+    }
+
+    showStage() {
+        const d = (id, show) => { const e = document.getElementById(id); if(e) e.style.display = show ? 'flex' : 'none'; };
+        d('chefBaseSelect', this.stage === 0);
+        d('chefCustomize', this.stage === 1);
+        d('chefFeedArea', this.stage === 2);
+        if (this.stage === 1) this.setupCustomIngredients();
+    }
+
+    setupCustomIngredients() {
+        const base = this.allIngredients[this.base];
+        this.currentIngredients = [];
+        if (this.base === 'pizza') {
+            if (this.customStep === 0) {
+                this.currentIngredients = base.sauces.map(s => ({...s, type:'sauce'}));
+            } else if (this.customStep === 1) {
+                this.currentIngredients = base.toppings.map(t => ({...t, type:'topping'}));
+            }
+        } else if (this.base === 'burger') {
+            if (this.customStep === 0) {
+                this.currentIngredients = base.patties.map(p => ({...p, type:'patty'}));
+            } else if (this.customStep === 1) {
+                this.currentIngredients = base.layers.map(l => ({...l, type:'layer'}));
+            } else if (this.customStep === 2) {
+                this.currentIngredients = base.sauces.map(s => ({...s, type:'burger_sauce'}));
+            }
+        } else if (this.base === 'cake') {
+            if (this.customStep === 0) {
+                this.currentIngredients = base.glazeColors.map(g => ({...g, type:'glaze_color'}));
+            } else if (this.customStep === 1) {
+                this.currentIngredients = base.frostings.map(f => ({...f, type:'frosting'}));
+            } else if (this.customStep === 2) {
+                this.currentIngredients = base.toppings.map(t => ({...t, type:'cake_topping'}));
+            }
+        }
+        this.scrollX = 0;
+        this.maxScrollX = Math.max(0, this.currentIngredients.length * 100 - this.W + 40);
+    }
+
+    // ---- INPUT ----
+    bindInput() {
+        this._onPD = (e) => this.onPointerDown(e);
+        this._onPM = (e) => this.onPointerMove(e);
+        this._onPU = (e) => this.onPointerUp(e);
+        if (this.canvas) {
+            this.canvas.addEventListener('pointerdown', this._onPD);
+            this.canvas.addEventListener('pointermove', this._onPM);
+            this.canvas.addEventListener('pointerup', this._onPU);
+            this.canvas.addEventListener('pointerleave', this._onPU);
+        }
+    }
+
+    unbindInput() {
+        if (this.canvas) {
+            this.canvas.removeEventListener('pointerdown', this._onPD);
+            this.canvas.removeEventListener('pointermove', this._onPM);
+            this.canvas.removeEventListener('pointerup', this._onPU);
+            this.canvas.removeEventListener('pointerleave', this._onPU);
+        }
+    }
+
+    onPointerDown(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        this.touchStartX = x;
+        this.touchStartY = y;
+        this.wasTap = true;
+
+        if (this.stage === 2) {
+            // Feeding: try to grab a piece
+            for (let i = this.feedPieces.length - 1; i >= 0; i--) {
+                const p = this.feedPieces[i];
+                const dx = x - p.x;
+                const dy = y - p.y;
+                if (Math.sqrt(dx*dx + dy*dy) < p.r + 10) {
+                    this.dragging = true;
+                    this.dragItem = {index: i, piece: p};
+                    this.dragX = x;
+                    this.dragY = y;
+                    return;
+                }
+            }
+        }
+
+        if (this.stage === 1) {
+            // Customize: try to grab from ingredient strip or placed ingredient
+            // Check strip first
+            const stripY = this.H - 80;
+            if (y > stripY && y < this.H) {
+                const idx = Math.floor((x + this.scrollX) / 100);
+                if (idx >= 0 && idx < this.currentIngredients.length) {
+                    const ing = this.currentIngredients[idx];
+                    const ix = idx * 100 - this.scrollX + 50;
+                    if (x > ix - 45 && x < ix + 45) {
+                        this.dragging = true;
+                        this.dragItem = {ingredient: ing, fromStrip: true};
+                        this.dragX = x;
+                        this.dragY = y;
+                        return;
+                    }
+                }
+            }
+            // Check placed ingredients (to move them)
+            for (let i = this.ingredients.length - 1; i >= 0; i--) {
+                const ing = this.ingredients[i];
+                const dx = x - ing.x;
+                const dy = y - ing.y;
+                if (Math.sqrt(dx*dx + dy*dy) < 35) {
+                    this.dragging = true;
+                    this.dragItem = {index: i, ingredient: ing, fromStrip: false};
+                    this.dragX = x;
+                    this.dragY = y;
+                    return;
+                }
+            }
+        }
+    }
+
+    onPointerMove(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        if (Math.abs(x - this.touchStartX) > 5 || Math.abs(y - this.touchStartY) > 5) {
+            this.wasTap = false;
+        }
+        if (this.dragging) {
+            this.dragX = x;
+            this.dragY = y;
+        }
+        this.hoverR = (this.stage === 2) ? this.feedMouthX() : 0;
+    }
+
+    onPointerUp(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        if (this.dragging && this.dragItem && this.stage === 1) {
+            // Drop ingredient on dish
+            if (y < this.H - 90 && y > 10) {
+                if (this.dragItem.fromStrip) {
+                    const ing = Object.assign({}, this.dragItem.ingredient);
+                    ing.x = x;
+                    ing.y = y;
+                    ing.order = this.ingredients.length;
+                    this.ingredients.push(ing);
+                } else {
+                    // Move existing ingredient
+                    this.ingredients[this.dragItem.index].x = x;
+                    this.ingredients[this.dragItem.index].y = y;
+                }
+            } else if (!this.dragItem.fromStrip) {
+                // Removed from dish (dragged to strip)
+                this.ingredients.splice(this.dragItem.index, 1);
+            }
+        }
+
+        if (this.dragging && this.dragItem && this.stage === 2) {
+            // Feed piece to pet
+            const mx = this.feedMouthX();
+            const my = this.H * 0.38;
+            const dx = x - mx;
+            const dy = y - my;
+            if (Math.sqrt(dx*dx + dy*dy) < 55) {
+                // Fed successfully!
+                this.feedPieces.splice(this.dragItem.index, 1);
+                this.satiety = Math.min(100, this.satiety + 25);
+                this.feedChewT = 1.0;
+                // Trigger reaction based on dish composition
+                this.triggerReaction();
+            }
+        }
+
+        this.dragging = false;
+        this.dragItem = null;
+    }
+
+    feedMouthX() {
+        return this.W * 0.5;
+    }
+
+    triggerReaction() {
+        // Aggregate tags from all placed ingredients
+        let totalSpicy = 0, totalSweet = 0, totalSize = 0, totalCount = this.ingredients.length;
+        for (const ing of this.ingredients) {
+            if (ing.tags) {
+                totalSpicy += ing.tags.spicy || 0;
+                totalSweet += ing.tags.sweet || 0;
+                totalSize += ing.tags.size || 0;
+            }
+        }
+        if (totalSpicy >= 3) {
+            this.feedReaction = 'fire';
+        } else if (totalSize >= 4 || totalCount >= 12) {
+            this.feedReaction = 'belly';
+        } else if (totalSweet >= 4) {
+            this.feedReaction = 'hearts';
+            this.satiety = 100;
+        } else {
+            this.feedReaction = 'default';
+        }
+        this.feedReactionT = 2.5;
+    }
+
+    // ---- SELECT BASE ----
+    selectBase(which) {
+        this.base = which;
+        this.stage = 1;
+        this.customStep = 0;
+        this.ingredients = [];
+        this.baked = false;
+        this.sauceMode = null;
+        this.glazeColor = null;
+        this.frostingType = null;
+        this.showStage();
+    }
+
+    nextStep() {
+        const maxSteps = this.base === 'pizza' ? 3 : this.base === 'burger' ? 4 : 3;
+        if (this.base === 'pizza' && this.customStep === 1) {
+            // Bake pizza
+            this.baked = true;
+            this.customStep = 2;
+            this.showStage();
+            return;
+        }
+        if (this.customStep < maxSteps - 1) {
+            this.customStep++;
+            this.showStage();
+        } else {
+            this.goToFeed();
+        }
+    }
+
+    goToFeed() {
+        this.stage = 2;
+        // Generate feed pieces from placed ingredients
+        this.feedPieces = [];
+        const cx = this.W * 0.35;
+        const cy = this.H * 0.55;
+        const totalPieces = Math.min(8, Math.max(3, Math.floor(this.ingredients.length / 2)));
+        for (let i = 0; i < totalPieces; i++) {
+            this.feedPieces.push({
+                x: cx + (i % 4) * 60 - (Math.min(totalPieces, 4) * 30),
+                y: cy + Math.floor(i / 4) * 60,
+                r: 22,
+                color: this.base === 'pizza' ? '#e8a850' : this.base === 'burger' ? '#c8956c' : '#f5c6d0'
+            });
+        }
+        this.satiety = 0;
+        this.feedReaction = null;
+        this.feedReactionT = 0;
+        this.showStage();
+    }
+
+    resetGame() {
+        this.stage = 0;
+        this.base = null;
+        this.customStep = 0;
+        this.ingredients = [];
+        this.baked = false;
+        this.feedPieces = [];
+        this.satiety = 0;
+        this.feedReaction = null;
+        this.scrollX = 0;
+        this.showStage();
+    }
+
+    // ---- ANIMATION LOOP ----
+    loop(t) {
+        if (!this.canvas || this.canvas.style.display === 'none') {
+            this._animFrame = requestAnimationFrame((t2) => this.loop(t2));
+            return;
+        }
+        const dt = Math.min((t - this._lastT) / 1000, 0.1);
+        this._lastT = t;
+
+        if (this.feedChewT > 0) this.feedChewT -= dt;
+        if (this.feedReactionT > 0) this.feedReactionT -= dt;
+        if (this.feedReactionT <= 0) this.feedReaction = null;
+
+        this.draw();
+        this._animFrame = requestAnimationFrame((t2) => this.loop(t2));
+    }
+
+    // ---- DRAW ----
+    draw() {
+        const ctx = this.ctx;
+        const W = this.W, H = this.H;
+        if (!ctx) return;
+
+        // Background
+        const bg = ctx.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, '#fff8f0');
+        bg.addColorStop(1, '#fdebd0');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        // Table pattern
+        ctx.fillStyle = 'rgba(139,90,43,0.08)';
+        for (let i = 0; i < W; i += 60) {
+            for (let j = 0; j < H; j += 40) {
+                ctx.fillRect(i, j, 58, 38);
+            }
+        }
+
+        if (this.stage === 1) {
+            this.drawCustomize(ctx, W, H);
+        } else if (this.stage === 2) {
+            this.drawFeeding(ctx, W, H);
+        } else {
+            // Stage 0 is DOM-based, but draw a cute background
+            this.drawIdleBg(ctx, W, H);
+        }
+    }
+
+    drawIdleBg(ctx, W, H) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '60px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('👨‍🍳', W/2, H/2 - 20);
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#888';
+        ctx.fillText('Выбери основу блюда ниже', W/2, H/2 + 40);
+        ctx.textAlign = 'start';
+    }
+
+    drawCustomize(ctx, W, H) {
+        // Draw the dish base
+        const cx = W / 2;
+        const cy = H * 0.38;
+
+        if (this.base === 'pizza') {
+            // Dough
+            ctx.fillStyle = this.baked ? '#e8c070' : '#f5deb3';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 140, 140, 0, 0, Math.PI * 2);
+            ctx.fill();
+            if (this.baked) {
+                ctx.strokeStyle = '#c8956c';
+                ctx.lineWidth = 8;
+                ctx.stroke();
+            }
+            // Sauce layer if any sauce placed
+            if (this.customStep >= 1) {
+                ctx.fillStyle = this.ingredients.some(i => i.id === 'tomato') ? 'rgba(192,57,43,0.6)' : 'rgba(245,222,179,0.6)';
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, 120, 120, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (this.base === 'burger') {
+            // Bottom bun
+            ctx.fillStyle = '#d4a054';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + 30, 110, 35, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#e8c070';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + 28, 100, 30, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Layers stack
+            let stackY = cy - 10;
+            const hasTopBun = this.ingredients.some(i => i.id === 'top_bun');
+            for (const ing of this.ingredients) {
+                ctx.fillStyle = ing.color;
+                ctx.beginPath();
+                ctx.ellipse(cx, stackY, 95, 14, 0, 0, Math.PI * 2);
+                ctx.fill();
+                stackY -= 10;
+            }
+            if (hasTopBun) {
+                ctx.fillStyle = '#d4a054';
+                ctx.beginPath();
+                ctx.ellipse(cx, stackY - 10, 110, 30, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Sesame seeds
+                ctx.fillStyle = '#fff';
+                for (let i = 0; i < 8; i++) {
+                    const sx = cx + Math.cos(i * 0.8) * 50;
+                    const sy = stackY - 18 + Math.sin(i * 0.8) * 12;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        } else if (this.base === 'cake') {
+            // Cake base
+            ctx.fillStyle = '#f5c6a0';
+            ctx.fillRect(cx - 90, cy - 50, 180, 100);
+            ctx.fillStyle = '#e8b890';
+            ctx.fillRect(cx - 85, cy - 45, 170, 45);
+            // Glaze
+            if (this.glazeColor) {
+                ctx.fillStyle = this.glazeColor;
+                ctx.beginPath();
+                ctx.ellipse(cx, cy - 35, 85, 20, 0, 0, Math.PI);
+                ctx.fill();
+                ctx.fillRect(cx - 85, cy - 50, 170, 20);
+            }
+            // Frosting dots on sides
+            if (this.frostingType) {
+                ctx.fillStyle = this.frostingType;
+                for (let i = 0; i < 6; i++) {
+                    const fx = cx - 80 + i * 32;
+                    ctx.beginPath();
+                    ctx.arc(fx, cy + 5, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            // Placed toppings
+            for (const ing of this.ingredients) {
+                if (ing.type === 'cake_topping') {
+                    ctx.fillStyle = ing.color;
+                    ctx.beginPath();
+                    ctx.arc(ing.x, ing.y, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        // Draw placed toppings/freeform ingredients
+        for (const ing of this.ingredients) {
+            if (this.base === 'cake' && ing.type === 'cake_topping') continue; // drawn above
+            ctx.fillStyle = ing.color;
+            ctx.beginPath();
+            const r = ing.type === 'sauce' || ing.type === 'glaze_color' ? 35 : 18;
+            ctx.arc(ing.x, ing.y, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(ing.emoji || '', ing.x, ing.y + 5);
+            ctx.textAlign = 'start';
+        }
+
+        // Ingredient strip at bottom
+        ctx.fillStyle = 'rgba(0,0,0,0.06)';
+        ctx.fillRect(0, H - 85, W, 85);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, H - 85, W, 85);
+        ctx.clip();
+        for (let i = 0; i < this.currentIngredients.length; i++) {
+            const ing = this.currentIngredients[i];
+            const ix = i * 100 - this.scrollX + 50;
+            if (ix < -60 || ix > W + 60) continue;
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 2;
+            this.roundRect(ctx, ix - 40, H - 78, 80, 70, 10);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = ing.color;
+            ctx.beginPath();
+            ctx.arc(ix, H - 50, 18, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = '18px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(ing.emoji || '●', ix, H - 43);
+            ctx.fillStyle = '#333';
+            ctx.font = '9px sans-serif';
+            ctx.fillText(ing.name || '', ix, H - 8);
+        }
+        ctx.textAlign = 'start';
+        ctx.restore();
+
+        // Scroll indicator
+        if (this.maxScrollX > 0 && this.scrollX > 0) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath();
+            ctx.moveTo(15, H - 43);
+            ctx.lineTo(5, H - 48);
+            ctx.lineTo(5, H - 38);
+            ctx.fill();
+        }
+        if (this.maxScrollX > 0 && this.scrollX < this.maxScrollX) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath();
+            ctx.moveTo(W - 15, H - 43);
+            ctx.lineTo(W - 5, H - 48);
+            ctx.lineTo(W - 5, H - 38);
+            ctx.fill();
+        }
+
+        // Drag preview
+        if (this.dragging && this.dragItem && this.dragItem.ingredient) {
+            ctx.globalAlpha = 0.7;
+            ctx.fillStyle = this.dragItem.ingredient.color;
+            ctx.beginPath();
+            ctx.arc(this.dragX, this.dragY, 22, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = '20px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(this.dragItem.ingredient.emoji || '●', this.dragX, this.dragY + 7);
+            ctx.textAlign = 'start';
+            ctx.globalAlpha = 1;
+        }
+
+        // Step indicator
+        const stepNames = this.base === 'pizza' ? ['Соус','Начинка','Готово!🍕'] :
+                          this.base === 'burger' ? ['Котлета','Добавки','Соус','Готово!🍔'] :
+                          ['Глазурь','Крем','Топпинги'];
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        const stepLabel = stepNames[this.customStep] || '';
+        ctx.fillText('Этап: ' + stepLabel, W/2, H - 90);
+        ctx.fillText('Ингредиентов: ' + this.ingredients.length, W/2, H - 95);
+        ctx.textAlign = 'start';
+    }
+
+    drawFeeding(ctx, W, H) {
+        // Pet sitting at table
+        const px = W * 0.68;
+        const py = H * 0.32;
+
+        // Pet body
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(px, py + 20, 55, 65, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Belly (inflated if reaction=belly)
+        const bellyScale = this.feedReaction === 'belly' ? 1.4 : 1;
+        ctx.fillStyle = '#ff9999';
+        ctx.beginPath();
+        ctx.ellipse(px, py + 35, 40 * bellyScale, 45 * bellyScale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Head
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(px, py - 55, 40, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ears
+        ctx.beginPath();
+        ctx.moveTo(px - 28, py - 78);
+        ctx.lineTo(px - 15, py - 105);
+        ctx.lineTo(px - 5, py - 72);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(px + 28, py - 78);
+        ctx.lineTo(px + 15, py - 105);
+        ctx.lineTo(px + 5, py - 72);
+        ctx.closePath();
+        ctx.fill();
+
+        // Eyes (happy when feeding)
+        if (this.feedChewT > 0 || this.feedReaction === 'hearts') {
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(px - 14, py - 66, 4, 0, Math.PI);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(px + 14, py - 66, 4, 0, Math.PI);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(px - 14, py - 66, 12, 0, Math.PI * 2);
+            ctx.arc(px + 14, py - 66, 12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(px - 14, py - 66, 5, 0, Math.PI * 2);
+            ctx.arc(px + 14, py - 66, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Mouth (wide open for belly reaction)
+        const mouthW = this.feedReaction === 'belly' ? 28 : 18;
+        const mouthH = this.feedChewT > 0.3 ? 12 : 6;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(px, py - 48, mouthW, mouthH, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#c0392b';
+        ctx.beginPath();
+        ctx.ellipse(px, py - 46, mouthW - 4, mouthH - 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Fire breath
+        if (this.feedReaction === 'fire') {
+            const ft = 1 - (this.feedReactionT / 2.5);
+            ctx.fillStyle = `rgba(255,100,0,${0.8 - ft * 0.8})`;
+            ctx.beginPath();
+            ctx.moveTo(px + 20, py - 48);
+            ctx.quadraticCurveTo(px + 60, py - 70 - ft * 20, px + 80 - ft * 20, py - 50);
+            ctx.quadraticCurveTo(px + 60, py - 35, px + 20, py - 46);
+            ctx.fill();
+            ctx.fillStyle = `rgba(255,200,0,${0.6 - ft * 0.6})`;
+            ctx.beginPath();
+            ctx.moveTo(px + 18, py - 48);
+            ctx.quadraticCurveTo(px + 50, py - 60 - ft * 10, px + 60 - ft * 15, py - 48);
+            ctx.quadraticCurveTo(px + 50, py - 40, px + 18, py - 46);
+            ctx.fill();
+        }
+
+        // Hearts
+        if (this.feedReaction === 'hearts') {
+            for (let i = 0; i < 5; i++) {
+                const hx = px + Math.cos(i * 1.3 + Date.now() / 800) * 80;
+                const hy = py - 90 + Math.sin(i * 0.9 + Date.now() / 600) * 60;
+                ctx.fillStyle = '#ff4080';
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('❤️', hx, hy);
+                ctx.textAlign = 'start';
+            }
+        }
+
+        // Paws
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(px - 25, py + 30, 18, 12, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(px + 25, py + 30, 18, 12, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Table
+        ctx.fillStyle = '#8b5a2b';
+        ctx.fillRect(W * 0.08, py + 55, W * 0.6, 20);
+        ctx.fillStyle = '#a0522d';
+        ctx.fillRect(W * 0.1, py + 75, W * 0.08, H - py - 75);
+        ctx.fillRect(W * 0.6, py + 75, W * 0.08, H - py - 75);
+
+        // Feed pieces on table
+        if (this.dragging && this.dragItem && this.dragItem.piece) {
+            ctx.globalAlpha = 0.6;
+            ctx.fillStyle = this.dragItem.piece.color;
+            ctx.beginPath();
+            ctx.arc(this.dragX, this.dragY, this.dragItem.piece.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
+        for (let i = 0; i < this.feedPieces.length; i++) {
+            const p = this.feedPieces[i];
+            if (this.dragging && this.dragItem && this.dragItem.index === i) continue;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // Satiety bar
+        ctx.fillStyle = '#ddd';
+        this.roundRect(ctx, W * 0.1, H - 35, W * 0.8, 20, 10);
+        ctx.fill();
+        const barW = (W * 0.8 - 4) * (this.satiety / 100);
+        const barGrad = ctx.createLinearGradient(W * 0.1, 0, W * 0.1 + barW, 0);
+        barGrad.addColorStop(0, '#ff6b6b');
+        barGrad.addColorStop(1, '#4ecb71');
+        ctx.fillStyle = barGrad;
+        this.roundRect(ctx, W * 0.1 + 2, H - 33, barW, 16, 8);
+        ctx.fill();
+        ctx.fillStyle = '#333';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Сытость: ' + Math.floor(this.satiety) + '%', W/2, H - 20);
+        ctx.textAlign = 'start';
+
+        // Instruction
+        if (this.feedPieces.length === 0 && this.satiety >= 100) {
+            ctx.fillStyle = '#2ecc71';
+            ctx.font = 'bold 18px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🎉 Ням-ням! Питомец сыт и доволен! 🎉', W/2, H/2 + 80);
+            ctx.textAlign = 'start';
+        } else if (this.feedPieces.length > 0) {
+            ctx.fillStyle = '#888';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Перетащи кусочек в рот питомцу →', W * 0.35, H * 0.25);
+            ctx.textAlign = 'start';
+        }
+    }
+
+    roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
     }
 }
 

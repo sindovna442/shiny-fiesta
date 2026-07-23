@@ -199,6 +199,11 @@
                     <div class="minigame-name">Морской Сёрф</div>
                     <div class="minigame-desc">3D-раннер на волнах!</div>
                 </div>
+                <div class="minigame-card chef-minigame-card" onclick="game.startMinigame('chef')">
+                    <div class="minigame-icon">👨‍🍳</div>
+                    <div class="minigame-name">Шеф-Повар</div>
+                    <div class="minigame-desc">Творческая кухня без правил!</div>
+                </div>
                 <div class="minigame-card" onclick="game.startMinigame('hellfire')">
                     <div class="minigame-icon">🔥</div>
                     <div class="minigame-name">HELLFIRE BALLS</div>
@@ -207,7 +212,39 @@
             </div>
         </div>
 
-        <!-- 🔥 HELLFIRE BALLS — адская арена (полный экран) -->
+            <!-- 👨‍🍳 Шеф-Повар -->
+    <div id="chefScreen" class="screen" style="display:none;padding:0;background:#fff8f0;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;background:#fff;border-bottom:2px solid #eee;">
+            <button id="chefClose" class="back-btn" style="background:#f0f0f0;color:#333;">← Мини-игры</button>
+            <span style="color:#333;font-size:18px;font-weight:bold;">👨‍🍳 Шеф-Повар</span>
+            <button id="chefReset" style="padding:6px 14px;background:#ff6b6b;color:#fff;border:none;border-radius:15px;cursor:pointer;">🔄 Новое блюдо</button>
+        </div>
+
+        <!-- Stage 0: Base selection -->
+        <div id="chefBaseSelect" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:20px;">
+            <h3 style="color:#555;margin:0;">Выбери основу блюда:</h3>
+            <div style="display:flex;gap:25px;flex-wrap:wrap;justify-content:center;">
+                <button class="chef-base-btn" onclick="game._chef.selectBase('pizza')" style="padding:25px 35px;font-size:40px;background:#fff;border:3px solid #e8a850;border-radius:20px;cursor:pointer;">🍕<br><span style="font-size:16px;">Пицца</span></button>
+                <button class="chef-base-btn" onclick="game._chef.selectBase('burger')" style="padding:25px 35px;font-size:40px;background:#fff;border:3px solid #c8956c;border-radius:20px;cursor:pointer;">🍔<br><span style="font-size:16px;">Бургер</span></button>
+                <button class="chef-base-btn" onclick="game._chef.selectBase('cake')" style="padding:25px 35px;font-size:40px;background:#fff;border:3px solid #f5c6d0;border-radius:20px;cursor:pointer;">🎂<br><span style="font-size:16px;">Торт</span></button>
+            </div>
+        </div>
+
+        <!-- Stage 1: Customization -->
+        <div id="chefCustomize" style="flex:1;display:none;flex-direction:column;">
+            <canvas id="chefCanvas" style="flex:1;width:100%;"></canvas>
+            <div id="chefCustomBtns" style="display:flex;justify-content:center;gap:12px;padding:10px;background:#fff;border-top:2px solid #eee;">
+                <button id="chefNextStep" onclick="game._chef.nextStep()" style="padding:10px 30px;background:#4ecb71;color:#fff;border:none;border-radius:20px;font-size:16px;cursor:pointer;">Далее →</button>
+            </div>
+        </div>
+
+        <!-- Stage 2: Feeding -->
+        <div id="chefFeedArea" style="flex:1;display:none;flex-direction:column;">
+            <canvas id="chefCanvas2" style="display:none;"></canvas>
+        </div>
+    </div>
+
+<!-- 🔥 HELLFIRE BALLS — адская арена (полный экран) -->
     <!-- Морской Сёрф -->
     <div id="surfScreen" class="screen" style="display:none;padding:0;background:#0a3060;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;background:rgba(0,0,0,0.3);">

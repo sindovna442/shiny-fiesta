@@ -1340,3 +1340,10 @@ body {
 .surf-minigame-card { background: linear-gradient(135deg, #0a5088, #1a8fcf); border: 1px solid #0d6aa0; }
 .surf-minigame-card:hover { background: linear-gradient(135deg, #0d6aa0, #22a0e0); transform: translateY(-3px); }
 .surf-minigame-card .minigame-icon { color: #ffd700; }
+
+/* ===== Шеф-Повар ===== */
+.chef-minigame-card { background: linear-gradient(135deg, #fff8f0, #fdebd0); border: 1px solid #e8a850; }
+.chef-minigame-card:hover { background: linear-gradient(135deg, #fdebd0, #fad7a0); transform: translateY(-3px); }
+.chef-minigame-card .minigame-icon { color: #e8a850; }
+.chef-base-btn { transition: transform 0.2s, box-shadow 0.2s; }
+.chef-base-btn:hover { transform: scale(1.08); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
