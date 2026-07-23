@@ -1808,7 +1808,14 @@ const game = {
         try {
             const response = await fetch(`${API_BASE}/sketches/${this.petId}`);
             const data = await response.json();
-            this.sketchPages = data.sketches || [];
+            const rawList = Array.isArray(data) ? data : (data.sketches || []);
+            // Persistence fix: backend may return imageData / image_data /
+            // dataUrl — normalize to imageData so renderSinglePage finds it.
+            this.sketchPages = rawList.map(function (s) {
+                const img = s.imageData || s.image_data || s.dataUrl || s.data_url || '';
+                return Object.assign({}, s, { imageData: img });
+            });
+            this.currentPageIndex = 0;
             this.renderNotebookPage();
         } catch (error) {
             console.error('Error loading notebook pages:', error);
@@ -3013,7 +3020,22 @@ const game = {
                 body: JSON.stringify({ title, imageData })
             });
             if (!response.ok) throw new Error('Save failed');
-            await response.json();
+            const savedJson = await response.json().catch(function () { return {}; });
+            const backendSketch = savedJson && (savedJson.sketch || savedJson);
+            // Persistence fix: append the just-saved sketch to the local
+            // cache so when backToSketchList() reloads the notebook it is
+            // visible without depending on a backend round-trip shape.
+            if (backendSketch && (backendSketch.id || backendSketch.imageData || backendSketch.image_data)) {
+                if (!Array.isArray(this.sketchPages)) this.sketchPages = [];
+                this.sketchPages = Array.isArray(this.sketchPages) ? this.sketchPages : [];
+                this.sketchPages.unshift({
+                    id: backendSketch.id || ('local-' + Date.now()),
+                    title: backendSketch.title || title,
+                    imageData: backendSketch.imageData || backendSketch.image_data || imageData,
+                    created_at: backendSketch.created_at || backendSketch.createdAt || new Date().toISOString()
+                });
+                this.currentPageIndex = 0;
+            }
             this.addNotification('Рисунок сохранён! 😻', 'success');
             await this.getPetStatus();
             this.updateUI();
@@ -3277,10 +3299,61 @@ class DrawingEditor {
     }
 
     setupCanvas() {
-        // Заполняем белым
-        this.ctx.fillStyle = 'white';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        this.saveHistory();
+        // Hitbox fix: sync canvas.width/height to its CSS-rendered rect
+        // so mouse coords from getBoundingClientRect() map exactly to
+        // canvas pixels (the old code used the HTML attribute size,
+        // which mismatches whenever the canvas is CSS-scaled).
+        this.fitCanvasToDisplay();
+    }
+
+    // Reflect the canvas's CSS-rendered rect into the backing-store
+    // dimensions; re-fit on resize via a ResizeObserver on the parent.
+    fitCanvasToDisplay() {
+        const rect = this.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return; // not laid out yet
+        // Preserve any current drawing before resize
+        let prevData = null;
+        try {
+            if (this.canvas.width > 0 && this.canvas.height > 0) {
+                prevData = this.canvas.toDataURL();
+            }
+        } catch (e) { /* tainted canvas — ignore */ }
+        // Cap to keep dataURLs reasonable even on 4K screens
+        const capW = 1200, capH = 800;
+        const w = Math.min(Math.max(2, Math.round(rect.width)), capW);
+        const h = Math.min(Math.max(2, Math.round(rect.height)), capH);
+        this.canvas.width = w;
+        this.canvas.height = h;
+        if (prevData) this._restoreSketchData(prevData);
+        else {
+            this.ctx.fillStyle = 'white';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.saveHistory();
+        }
+        // Auto-refit when the wrapper resizes (window resize, rotation,
+        // screen change, or modal swap that re-mounts the canvas).
+        if (!this._resizeObserver && typeof ResizeObserver !== 'undefined') {
+            const target = this.canvas.parentElement || this.canvas;
+            this._resizeObserver = new ResizeObserver(() => this.fitCanvasToDisplay());
+            this._resizeObserver.observe(target);
+        }
+    }
+
+    // Re-paint a saved dataURI onto the canvas after a resize.
+    _restoreSketchData(dataURL) {
+        const img = new Image();
+        img.onload = () => {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.drawImage(img, 0, 0);
+            this.saveHistory();
+        };
+        img.onerror = () => {
+            // prev dataURI unusable — leave the freshly sized white canvas
+            this.ctx.fillStyle = 'white';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.saveHistory();
+        };
+        img.src = dataURL;
     }
 
     setupEventListeners() {
