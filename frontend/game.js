@@ -3340,6 +3340,13 @@ class DrawingEditor {
         const x = ((e.clientX || e.touches[0].clientX) - rect.left) * scaleX;
         const y = ((e.clientY || e.touches[0].clientY) - rect.top) * scaleY;
         
+        if (this.currentTool === 'fill') {
+            this.floodFill(Math.round(x), Math.round(y));
+            this.isDrawing = false;
+            this.saveHistory();
+            return;
+        }
+        
         this.ctx.beginPath();
         this.ctx.moveTo(x, y);
     }
@@ -3365,6 +3372,39 @@ class DrawingEditor {
         }
     }
 
+    floodFill(startX, startY) {
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        const startIdx = (startY * w + startX) * 4;
+        const srcR = data[startIdx], srcG = data[startIdx + 1], srcB = data[startIdx + 2];
+        const hex = this.brushColor.slice(1);
+        const fillR = parseInt(hex.slice(0, 2), 16);
+        const fillG = parseInt(hex.slice(2, 4), 16);
+        const fillB = parseInt(hex.slice(4, 6), 16);
+        if (Math.abs(srcR - fillR) < 5 && Math.abs(srcG - fillG) < 5 && Math.abs(srcB - fillB) < 5) return;
+        const stack = [[startX, startY]];
+        const visited = new Set();
+        while (stack.length > 0 && visited.size < 50000) {
+            const [cx, cy] = stack.pop();
+            const key = cx + ',' + cy;
+            if (visited.has(key) || cx < 0 || cx >= w || cy < 0 || cy >= h) continue;
+            const idx = (cy * w + cx) * 4;
+            if (Math.abs(data[idx] - srcR) > 30 ||
+                Math.abs(data[idx + 1] - srcG) > 30 ||
+                Math.abs(data[idx + 2] - srcB) > 30) continue;
+            data[idx] = fillR;
+            data[idx + 1] = fillG;
+            data[idx + 2] = fillB;
+            data[idx + 3] = 255;
+            visited.add(key);
+            stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+        }
+        ctx.putImageData(imageData, 0, 0);
+    }
+
     stopDrawing() {
         if (this.isDrawing) {
             this.isDrawing = false;
@@ -3381,6 +3421,8 @@ class DrawingEditor {
             document.getElementById('brushTool').classList.add('active');
         } else if (tool === 'eraser') {
             document.getElementById('eraserTool').classList.add('active');
+        } else if (tool === 'fill') {
+            document.getElementById('fillTool').classList.add('active');
         }
     }
 
@@ -3391,6 +3433,93 @@ class DrawingEditor {
 
     setColor(color) {
         this.brushColor = color;
+    }
+
+    setTool(tool) {
+        this.currentTool = tool;
+        // Update active button styles
+        if (this.canvas) {
+            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById(tool + 'Tool');
+            if (btn) btn.classList.add('active');
+        }
+        this.canvas.style.cursor = tool === 'fill' ? 'crosshair' : 'crosshair';
+    }
+
+    // Flood fill (bucket fill) using scanline algorithm
+    floodFill(startX, startY, fillColor) {
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        
+        if (startX < 0 || startX >= w || startY < 0 || startY >= h) return;
+        
+        // Get the image data
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        
+        // Parse fill color (hex or named)
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = 1; tmpCanvas.height = 1;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        tmpCtx.fillStyle = fillColor;
+        tmpCtx.fillRect(0, 0, 1, 1);
+        const fillData = tmpCtx.getImageData(0, 0, 1, 1).data;
+        
+        // Get target color at click point
+        const idx = (Math.floor(startY) * w + Math.floor(startX)) * 4;
+        const targetR = data[idx];
+        const targetG = data[idx + 1];
+        const targetB = data[idx + 2];
+        const targetA = data[idx + 3];
+        
+        // If clicking on same color, do nothing
+        if (targetR === fillData[0] && targetG === fillData[1] && targetB === fillData[2]) return;
+        
+        // Color match function
+        function matchColor(pxIdx) {
+            return Math.abs(data[pxIdx] - targetR) < 5 &&
+                   Math.abs(data[pxIdx + 1] - targetG) < 5 &&
+                   Math.abs(data[pxIdx + 2] - targetB) < 5 &&
+                   Math.abs(data[pxIdx + 3] - targetA) < 5;
+        }
+        
+        // Scanline fill using stack
+        const stack = [];
+        const visited = new Set();
+        
+        const startIdx = Math.floor(startY) * w + Math.floor(startX);
+        if (!matchColor(startIdx * 4)) return;
+        stack.push(Math.floor(startX), Math.floor(startY));
+        
+        while (stack.length > 0) {
+            const y = stack.pop();
+            const x = stack.pop();
+            const key = y * w + x;
+            
+            if (visited.has(key)) continue;
+            if (x < 0 || x >= w || y < 0 || y >= h) continue;
+            
+            const pxIdx = (y * w + x) * 4;
+            if (!matchColor(pxIdx)) continue;
+            
+            visited.add(key);
+            
+            // Fill pixel
+            data[pxIdx] = fillData[0];
+            data[pxIdx + 1] = fillData[1];
+            data[pxIdx + 2] = fillData[2];
+            data[pxIdx + 3] = 255;
+            
+            // Add neighbors
+            stack.push(x + 1, y);
+            stack.push(x - 1, y);
+            stack.push(x, y + 1);
+            stack.push(x, y - 1);
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+        this.saveHistory();
     }
 
     clear() {
