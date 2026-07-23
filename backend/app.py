@@ -362,7 +362,7 @@ def view_drawing(pet_id):
 def get_sketches(pet_id):
     """Получить все рисунки питомца"""
     if pet_id not in user_sketches:
-        return jsonify({'error': 'Pet not found'}), 404
+        return jsonify({'sketches': [], 'count': 0})
     
     sketches = user_sketches[pet_id]
     return jsonify({
@@ -375,7 +375,7 @@ def get_sketches(pet_id):
 def save_sketch(pet_id):
     """Сохранить новый рисунок"""
     if pet_id not in user_sketches:
-        return jsonify({'error': 'Pet not found'}), 404
+        user_sketches[pet_id] = []
     
     data = request.json
     sketch_data = data.get('imageData')
