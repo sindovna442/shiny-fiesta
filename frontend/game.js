@@ -5864,7 +5864,7 @@ class ChefGame {
         }
         if (this.__actx && this.__actx.state === 'suspended') this.__actx.resume();
         return this.__actx;
-    },
+    }
 
     // Sizzle: pizza baking sound (hissing/steam)
     playSizzle() {
@@ -5890,7 +5890,7 @@ class ChefGame {
         gain.connect(ctx.destination);
         src.start(now);
         src.stop(now + 1.3);
-    },
+    }
 
     // Chomp: chewing sound when a piece is eaten
     playChomp() {
@@ -5924,7 +5924,7 @@ class ChefGame {
         sg.connect(ctx.destination);
         squelch.start(now);
         squelch.stop(now + 0.15);
-    },
+    }
 
     // Happy squeak: high-pitched delighted sound at 100% satiety
     playHappySqueak() {
