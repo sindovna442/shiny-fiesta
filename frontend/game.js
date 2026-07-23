@@ -5345,7 +5345,9 @@ class ChefGame {
                 // Fed successfully!
                 this.feedPieces.splice(this.dragItem.index, 1);
                 this.satiety = Math.min(100, this.satiety + 25);
+                if (this.satiety >= 100) this.playHappySqueak();
                 this.feedChewT = 1.0;
+                this.playChomp();
                 // Trigger reaction based on dish composition
                 this.triggerReaction();
             }
@@ -5400,6 +5402,7 @@ class ChefGame {
         if (this.base === 'pizza' && this.customStep === 1) {
             // Bake pizza
             this.baked = true;
+            this.playSizzle();
             this.customStep = 2;
             this.showStage();
             return;
@@ -5876,6 +5879,109 @@ class ChefGame {
         ctx.lineTo(x, y + r);
         ctx.quadraticCurveTo(x, y, x + r, y);
         ctx.closePath();
+    }
+
+    // ===== SOUND EFFECTS =====
+    _audioCtx() {
+        if (!this.__actx) {
+            try { this.__actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+        }
+        if (this.__actx && this.__actx.state === 'suspended') this.__actx.resume();
+        return this.__actx;
+    },
+
+    // Sizzle: pizza baking sound (hissing/steam)
+    playSizzle() {
+        const ctx = this._audioCtx();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        // White-noise hiss filtered through a bandpass
+        const buf = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(3000, now);
+        bp.frequency.exponentialRampToValueAtTime(800, now + 1.0);
+        bp.Q.value = 0.5;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+        src.connect(bp);
+        bp.connect(gain);
+        gain.connect(ctx.destination);
+        src.start(now);
+        src.stop(now + 1.3);
+    },
+
+    // Chomp: chewing sound when a piece is eaten
+    playChomp() {
+        const ctx = this._audioCtx();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        // Two short percussive ticks (teeth closing)
+        for (let i = 0; i < 2; i++) {
+            const t = now + i * 0.08;
+            const osc = ctx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(200 + i * 80, t);
+            osc.frequency.exponentialRampToValueAtTime(60, t + 0.04);
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.12, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+            osc.connect(g);
+            g.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.07);
+        }
+        // Soft squelch underneath
+        const squelch = ctx.createOscillator();
+        squelch.type = 'sine';
+        squelch.frequency.setValueAtTime(120, now);
+        squelch.frequency.exponentialRampToValueAtTime(40, now + 0.12);
+        const sg = ctx.createGain();
+        sg.gain.setValueAtTime(0.08, now);
+        sg.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        squelch.connect(sg);
+        sg.connect(ctx.destination);
+        squelch.start(now);
+        squelch.stop(now + 0.15);
+    },
+
+    // Happy squeak: high-pitched delighted sound at 100% satiety
+    playHappySqueak() {
+        const ctx = this._audioCtx();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        // Rising chirp
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.06);
+        osc.frequency.exponentialRampToValueAtTime(1600, now + 0.12);
+        osc.frequency.exponentialRampToValueAtTime(2000, now + 0.15);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.2, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.26);
+        // Second chirp (echo)
+        const osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(800, now + 0.1);
+        osc2.frequency.exponentialRampToValueAtTime(1400, now + 0.16);
+        osc2.frequency.exponentialRampToValueAtTime(1800, now + 0.2);
+        const g2 = ctx.createGain();
+        g2.gain.setValueAtTime(0.1, now + 0.1);
+        g2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc2.connect(g2);
+        g2.connect(ctx.destination);
+        osc2.start(now + 0.1);
+        osc2.stop(now + 0.31);
     }
 }
 
