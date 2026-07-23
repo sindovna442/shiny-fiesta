@@ -2167,10 +2167,10 @@ const game = {
         this.switchScreen('gameScreen');
         if (gameName === 'sudoku') {
             document.getElementById('gameTitle').textContent = '🔢 Судоку';
-            this.initSudoku();
+            try { this.initSudoku(); } catch(e) { console.error('initSudoku failed:', e); }
         } else if (gameName === 'chess') {
             document.getElementById('gameTitle').textContent = '♟️ Шахматы';
-            this.initChess();
+            try { this.initChess(); } catch(e) { console.error('initChess failed:', e); }
         }
     },
 
@@ -2186,6 +2186,7 @@ const game = {
     
     initSudoku() {
         const canvas = document.getElementById('gameCanvas');
+        if (!canvas) { console.error('initSudoku: gameCanvas not found'); return; }
         const ctx = canvas.getContext('2d');
         canvas.width = 450;
         canvas.height = 450;
@@ -2249,7 +2250,8 @@ const game = {
         };
         
         // Кнопка новой игры
-        document.getElementById('gameControls').innerHTML =
+        const gc = document.getElementById('gameControls');
+        if (gc) gc.innerHTML =
             '<button class="game-control-btn" onclick="game.initSudoku()">🔄 Новая игра</button>';
     },
 
@@ -2361,6 +2363,7 @@ const game = {
     
     initChess() {
         const canvas = document.getElementById('gameCanvas');
+        if (!canvas) { console.error('initChess: gameCanvas not found'); return; }
         const ctx = canvas.getContext('2d');
         canvas.width = 480;
         canvas.height = 480;

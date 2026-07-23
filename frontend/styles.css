@@ -35,6 +35,11 @@ body {
     display: flex;
 }
 
+/* Убираем отступы у экрана редактора, чтобы canvas заполнял всё пространство */
+#editorScreen {
+    padding: 0;
+}
+
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
