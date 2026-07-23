@@ -4407,8 +4407,8 @@ class SurfGame {
 
     // ---- SPAWNING ----
     spawnObstacle() {
-        const types = ['reef', 'log', 'whale', 'crab', 'lifeRing'];
-        const weights = [0.22, 0.22, 0.16, 0.22, 0.18];
+        const types = ['reef', 'log', 'whale', 'fish', 'crab', 'lifeRing'];
+        const weights = [0.20, 0.20, 0.14, 0.12, 0.18, 0.16];
         const r = Math.random();
         let cum = 0, type = 'reef';
         for (let i = 0; i < types.length; i++) { cum += weights[i]; if (r < cum) { type = types[i]; break; } }
@@ -4559,6 +4559,7 @@ class SurfGame {
             if (o.type === 'reef' || o.type === 'crab') {
                 if (this.jumping) fatal = false;
             }
+            if (o.type === 'fish' && this.jumping) { fatal = false; this.coins += 5; }
             if (o.type === 'lifeRing') fatal = false;
             if (this.trampolining) fatal = false;
 
@@ -4649,6 +4650,22 @@ class SurfGame {
         ctx.fillStyle = sea;
         ctx.fillRect(0, H * 0.48, W, H * 0.52);
 
+        // Coin & distance HUD
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath();
+        ctx.roundRect(8, 8, 180, 34, 8);
+        ctx.fill();
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 18px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('🦪 ' + this.coins, 18, 32);
+        ctx.fillStyle = '#fff';
+        ctx.font = '13px sans-serif';
+        ctx.fillText('🏁 ' + Math.floor(this.distance) + 'м', 100, 32);
+        ctx.textAlign = 'start';
+        ctx.restore();
+
         // Waves
         ctx.strokeStyle = 'rgba(255,255,255,0.25)';
         ctx.lineWidth = 2;
@@ -4736,6 +4753,7 @@ class SurfGame {
             if (o.type === 'reef') this.drawReef(ctx, o);
             else if (o.type === 'log') this.drawLog(ctx, o);
             else if (o.type === 'whale') this.drawWhale(ctx, o);
+            else if (o.type === 'fish') this.drawFish(ctx, o);
             else if (o.type === 'crab') this.drawCrab(ctx, o);
             else if (o.type === 'lifeRing') this.drawLifeRing(ctx, o);
             ctx.restore();
@@ -4893,6 +4911,48 @@ class SurfGame {
         ctx.beginPath();
         ctx.arc(0, 3, 16, Math.PI * 1.6, Math.PI * 0.4);
         ctx.stroke();
+    }
+
+    drawFish(ctx, o) {
+        const bobY = Math.sin(Date.now() / 400 + o.x) * 6;
+        ctx.save();
+        ctx.translate(0, bobY);
+        // Fish body
+        ctx.fillStyle = '#ff6b9d';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 24, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ff4080';
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(34, -10);
+        ctx.lineTo(34, 10);
+        ctx.closePath();
+        ctx.fill();
+        // Fin
+        ctx.fillStyle = '#ff80a0';
+        ctx.beginPath();
+        ctx.moveTo(2, -10);
+        ctx.lineTo(10, -18);
+        ctx.lineTo(14, -8);
+        ctx.closePath();
+        ctx.fill();
+        // Eye
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(-12, -3, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.arc(-12, -3, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        // Jump hint
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⬆', 0, -22);
+        ctx.textAlign = 'start';
+        ctx.restore();
     }
 
     drawPlayer(ctx) {
