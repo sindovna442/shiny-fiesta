@@ -3544,7 +3544,7 @@ class HellfireBallsGame {
                 hp: maxHp, maxHp: maxHp,
                 x: (c + 0.5) * this.cellW,
                 y: this.cellTopOffset + this.cellH * rowIndex + this.cellH / 2,
-                w: this.cellW * 0.9, h: this.cellH * 0.9,
+                w: this.cellW * 0.95, h: this.cellH * 0.95,
                 seed: (c * 13 + rowIndex * 7) | 0
             });
         }
@@ -3788,8 +3788,8 @@ class HellfireBallsGame {
     aimEvent(clientX, clientY) {
         if (this.state !== 'AIMING') return;
         const rect = this.canvas.getBoundingClientRect();
-        const x = (clientX - rect.left);
-        const y = (clientY - rect.top);
+        const x = (clientX - rect.left) * (this.canvas.width / rect.width);
+        const y = (clientY - rect.top) * (this.canvas.height / rect.height);
         const dx = x - this.cannonX;
         const dy = y - this.cannonY;
         let ang = Math.atan2(dy, dx);
