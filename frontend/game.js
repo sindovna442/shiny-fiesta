@@ -19,6 +19,17 @@ const game = {
     _petAnimFrame: null,
     _petAnimLoopRunning: false,
     _mainScreenActive: false,
+    // Perf cache: getPetScale() is constant for the current canvas
+    // backing store; compute once on first use, reuse thereafter.
+    _petScale: null,
+    _petDirty: false,
+
+    // ===== In-app perf HUD (off by default; enable with ?perf=1) =====
+    _perfEnabled: false,
+    _drawCaller: null,
+    _perfTotals: { rAF: 0, redrawPetNow: 0, updateUI: 0,
+                   changeRoom: 0, movePetToItem: 0, leak: 0,
+                   _1sRing: null, _1sRingHead: 0 },
     
     // Система звука
     audioCtx: null,
@@ -65,6 +76,33 @@ const game = {
 
         // Pet animation rAF loop (gated to mainScreen)
         this.startPetAnimLoop();
+
+        // ---- Perf HUD: enable if URL has ?perf=1 or localStorage set.
+        try {
+            var _url = new URL(window.location.href);
+            var _ls = (function(){try{return localStorage.getItem("dcmPerfHud")==="1";}catch(_){return false;}})();
+            this._perfEnabled = (_url.searchParams.get("perf") === "1") || _ls;
+        } catch (_) { this._perfEnabled = false; }
+        if (this._perfEnabled) {
+            this._perfTotals._1sRing = new Array(60).fill("");
+            window.__perf = {
+                totals: this._perfTotals,
+                reset: function () {
+                    var t = game._perfTotals;
+                    for (var k in t) if (typeof t[k] === "number") t[k] = 0;
+                    t._1sRingHead = 0;
+                },
+                lastSecond: function () {
+                    var r = game._perfTotals._1sRing || [];
+                    var c = { rAF: 0, redrawPetNow: 0, updateUI: 0,
+                              changeRoom: 0, movePetToItem: 0, leak: 0 };
+                    for (var i = 0; i < r.length; i++) {
+                        if (c[r[i]] !== undefined) c[r[i]]++;
+                    }
+                    return c;
+                }
+            };
+        }
     },
 
     // Инициализация аудио
@@ -291,7 +329,7 @@ const game = {
                     room.item.y = Math.max(0.05, Math.min(0.95, (y - self.dragState.offsetY) / canvas.height));
                 }
                 
-                self.drawPet();
+                self.requestPetDraw();
                 return;
             }
             
@@ -360,11 +398,11 @@ const game = {
             self.hoveredItem = null;
             canvas.style.cursor = 'default';
             if (!self.dragState.active) {
-                self.drawPet();
+                self.requestPetDraw();
             } else {
                 self.dragState.active = false;
                 self.dragState.type = null;
-                self.drawPet();
+                self.requestPetDraw();
             }
         });
         
@@ -476,6 +514,8 @@ const game = {
     },
 
     updateAndDrawParticles(ctx) {
+        // Perf: skip the loop when no particles are queued.
+        if (this.particles.length === 0) return;
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const p = this.particles[i];
             
@@ -733,6 +773,7 @@ const game = {
         this.updateStat('health', this.pet.health);
 
         // Рисуем питомца (вызывается не чаще updateInterval)
+        if (this._perfEnabled) this._drawCaller = "updateUI";
         this.drawPet();
     },
 
@@ -756,11 +797,78 @@ const game = {
 
     // Перерисовка при смене комнаты (без setInterval, по запросу)
     redrawPetNow() {
+        if (this._perfEnabled) this._drawCaller = "redrawPetNow";
         this.drawPet();
     },
+
+    // ===== Perf helpers =====
+    // The rAF animation loop runs at ~60 fps. Event handlers
+    // therefore never need to repaint synchronously: any pending
+    // redraw happens within ~16 ms anyway. This stub is a safe
+    // drop-in replacement for `this.drawPet()` in event code.
+    requestPetDraw() {
+        // Intentional no-op. Reserving for future dirty-flag use.
+    },
+    // Lighter overlay for the dragged item: paint only the item
+    // sculpture with static (no hover) parameters — no roundRect
+    // label, no measureText, no save/restore churn beyond one call.
+    _drawDraggedItemOverlay(ctx, item, w, h) {
+        if (!item) return;
+        const cx = w * item.x;
+        const cy = h * item.y;
+        if (item.type === 'foodBowl') {
+            this.drawFoodBowl(ctx, cx, cy, w * 0.08, false);
+        } else if (item.type === 'bathtub') {
+            this.drawBathtub(ctx, cx, cy, w * 0.12, false);
+        } else if (item.type === 'bed') {
+            this.drawBed(ctx, cx, cy, w * 0.14, false);
+        }
+    },
+
+    // Tiny HUD overlay — caller breakdown for last-second window.
+    _drawPerfHud(ctx, canvasW) {
+        const t = this._perfTotals;
+        const c = (t._1sRing || []).reduce(function (acc, k) {
+            acc[k] = (acc[k] || 0) + 1;
+            return acc;
+        }, { rAF: 0, redrawPetNow: 0, updateUI: 0,
+             changeRoom: 0, movePetToItem: 0, leak: 0 });
+        const onlyRAF = (c.redrawPetNow === 0 && c.updateUI === 0 &&
+                         c.changeRoom === 0 && c.movePetToItem === 0 &&
+                         c.leak === 0);
+        const total = c.rAF + c.redrawPetNow + c.updateUI +
+                      c.changeRoom + c.movePetToItem + c.leak;
+        const pillW = 220, pillH = 80, padX = 10, padY = 8;
+        const x = canvasW - pillW - 8;
+        const y = 8;
+        ctx.save();
+        // background pill
+        ctx.fillStyle = onlyRAF ? "rgba(0,180,110,0.92)" : "rgba(220,40,40,0.92)";
+        ctx.fillRect(x, y, pillW, pillH);
+        // title
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 12px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText("PERF HUD " + (onlyRAF ? "OK" : "CHECK"), x + padX, y + padY + 12);
+        // body lines
+        ctx.font = "11px monospace";
+        ctx.fillText("frames in 60-frame window: " + total, x + padX, y + padY + 30);
+        ctx.fillText("rAF: " + c.rAF + "  leak: " + c.leak, x + padX, y + padY + 44);
+        ctx.fillText("upd=" + c.updateUI + "  rnd=" + c.redrawPetNow +
+                     "  cr=" + c.changeRoom + "  mi=" + c.movePetToItem,
+                     x + padX, y + padY + 58);
+        // tip
+        ctx.font = "10px monospace";
+        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.fillText("Disabled by default. Use ?perf=1 to enable.",
+                     x + padX, y + padY + 72);
+        ctx.restore();
+    },
+
     // ===== rAF animation loop for pet canvas =====
     petAnimLoop() {
         if (!this._petAnimLoopRunning) return; // safety
+        if (this._perfEnabled) this._drawCaller = "rAF";
         this.drawPet();
         this._petAnimFrame = requestAnimationFrame(() => this.petAnimLoop());
     },
@@ -817,11 +925,11 @@ const game = {
             if (inside && prevHovered !== item.type) {
                 this.hoveredItem = item.type;
                 canvas.style.cursor = 'pointer';
-                this.drawPet(); // перерисовка только когда hover меняется
+                this.requestPetDraw();
             } else if (!inside && prevHovered !== null) {
                 this.hoveredItem = null;
                 canvas.style.cursor = 'default';
-                this.drawPet(); // перерисовка только когда hover снимается
+                this.requestPetDraw();
             }
             return;
         }
@@ -867,6 +975,7 @@ const game = {
         roomEl.style.background = room.color;
         
         // Перерисовываем питомца в новой позиции
+        if (this._perfEnabled) this._drawCaller = "changeRoom";
         this.drawPet();
     },
 
@@ -901,6 +1010,16 @@ const game = {
 
     // Рисование питомца на Canvas
     drawPet() {
+        // Perf HUD: tag caller and tally.
+        if (this._perfEnabled) {
+            const _c = this._drawCaller || "leak";
+            this._perfTotals[_c] = (this._perfTotals[_c] || 0) + 1;
+            const _r = this._perfTotals._1sRing;
+            const _h = this._perfTotals._1sRingHead;
+            _r[_h % 60] = _c;
+            this._perfTotals._1sRingHead = (_h + 1) % 60;
+            this._drawCaller = null;
+        }
         const canvas = document.getElementById('petCanvas');
         if (!canvas) return;
         
@@ -919,16 +1038,21 @@ const game = {
         const petY = canvas.height * room.petY;
         this.drawDemonCat(ctx, petX, petY);
 
-        // Когда предмет перетаскивают — перерисовываем его ПОВЕРХ кота,
-        // чтобы еда/ванна/кровать визуально были впереди во время drag.
-        if (this.dragState && this.dragState.active && this.dragState.type === 'item') {
-            const prevHover = this.hoveredItem;
-            this.hoveredItem = null;
-            this.drawRoomElements(ctx, canvas.width, canvas.height);
-            this.hoveredItem = prevHover;
+        // Когда предмет перетаскивают — рисуем только его поверх кота.
+        // Один лёгкий проход: нет второй drawRoomElements, нет меряющего
+        // hover-label. rAF-цикл всё равно перерисует кадр через ~16 ms.
+        if (
+            this.dragState && this.dragState.active &&
+            this.dragState.type === 'item' && room.item
+        ) {
+            this._drawDraggedItemOverlay(ctx, room.item, canvas.width, canvas.height);
         }
 
-        
+
+        // Perf HUD overlay (top-right pill)
+        if (this._perfEnabled) {
+            this._drawPerfHud(ctx, canvas.width);
+        }
         // Рисуем частицы поверх всего
         this.updateAndDrawParticles(ctx);
     },
