@@ -93,6 +93,9 @@
                 <button class="nav-btn minigames-btn" onclick="game.goToMinigames()">
                     🎮 Мини-игры
                 </button>
+                <button class="nav-btn anti-stress-btn" onclick="game.openAntiStress()">
+                    💆 Антистресс
+                </button>
                 <button class="nav-btn reset-btn" onclick="game.resetPet()">
                     🔥 Сбросить игру
                 </button>
@@ -210,6 +213,15 @@
                 <canvas id="gameCanvas" width="600" height="500"></canvas>
             </div>
             <div class="game-controls" id="gameControls"></div>
+        </div>
+    </div>
+
+    <!-- Оверлей антистресса: пузырчатая плёнка поверх главного экрана -->
+    <div id="antiStressOverlay" class="anti-stress-overlay">
+        <button class="anti-stress-close" onclick="game.closeAntiStress()" title="Закрыть">✕</button>
+        <div class="anti-stress-wrap">
+            <div class="anti-stress-sheet" id="antiStressSheet"></div>
+            <button class="anti-stress-reset" onclick="game.resetAntiStress()" title="Новый лист">➡</button>
         </div>
     </div>
 
