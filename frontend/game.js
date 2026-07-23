@@ -2918,19 +2918,57 @@ const game = {
             bubble.addEventListener('click', () => this.popAntiStressBubble(bubble));
             sheet.appendChild(bubble);
         }
+        // Счётчик лопнувших пузырьков (вставляем над листом)
+        const wrap = document.querySelector('.anti-stress-wrap');
+        if (wrap && !document.getElementById('antiStressCounter')) {
+            const counter = document.createElement('div');
+            counter.className = 'anti-stress-counter';
+            counter.id = 'antiStressCounter';
+            wrap.insertBefore(counter, sheet);
+        }
+        sheet.classList.remove('glow');
         this.antiStressPopped = 0;
+        this.updateAntiStressCounter();
+    },
+
+    // Обновить счётчик лопнутых
+    updateAntiStressCounter() {
+        const c = document.getElementById('antiStressCounter');
+        if (c) c.textContent = this.antiStressPopped + ' / ' + this.antiStressTotalBubbles + ' 💥';
     },
 
     // Лопнуть один пузырёк (каждый со своим хитбоксом)
     popAntiStressBubble(bubble) {
         if (bubble.classList.contains('popped')) return;
+        const idx = parseInt(bubble.dataset.idx, 10) || 0;
+
+        // Частица-«пуф» внутри лопнувшего пузырька
+        this.spawnPuffParticle(bubble);
+
         bubble.classList.add('popping');
         setTimeout(() => {
             bubble.classList.remove('popping');
             bubble.classList.add('popped');
         }, 180);
+
         this.antiStressPopped++;
-        this.playBubblePop();
+        this.playBubblePop(idx);
+        this.updateAntiStressCounter();
+
+        // Если все лопнули — подсвечиваем лист и проигрываем динг
+        if (this.antiStressPopped === this.antiStressTotalBubbles) {
+            const sheet = document.getElementById('antiStressSheet');
+            if (sheet) sheet.classList.add('glow');
+            setTimeout(() => this.playCompletionDing(), 220);
+        }
+    },
+
+    // Создать частицу-«пуф» внутри лопнувшего пузырька
+    spawnPuffParticle(bubble) {
+        const puff = document.createElement('div');
+        puff.className = 'anti-stress-puff';
+        bubble.appendChild(puff);
+        setTimeout(() => puff.remove(), 520);
     },
 
     // Заменить лист на новый (сбросить все пузырьки)
@@ -2938,43 +2976,127 @@ const game = {
         const sheet = document.getElementById('antiStressSheet');
         sheet.querySelectorAll('.anti-stress-bubble').forEach(b => {
             b.classList.remove('popped', 'popping');
+            b.querySelectorAll('.anti-stress-puff').forEach(p => p.remove());
         });
+        sheet.classList.remove('glow');
         this.antiStressPopped = 0;
-        this.playBubblePop();
+        this.playResetWhoosh();
+        this.updateAntiStressCounter();
         this.addNotification('Новый лист антистресса готов 💆', 'info');
     },
 
-    // Web Audio: короткий «поп» звук
-    playBubblePop() {
+    // Web Audio: приятный «поп» с вариацией высоты по индексу пузырька
+    playBubblePop(idx = 0) {
         if (!this.audioCtx) return;
         if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
         const now = this.audioCtx.currentTime;
 
-        // Основной тон: быстрый спад высокой частоты (характерный «поп»)
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(950, now);
-        osc.frequency.exponentialRampToValueAtTime(220, now + 0.09);
-        gain.gain.setValueAtTime(0.18, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now);
-        osc.stop(now + 0.12);
+        // Питч-вариация: колонка (idx % 6) + детерминированный jitter → каждый поп звучит чуть иначе
+        const col = idx % 6;
+        const jitter = ((idx * 7919) % 11) / 100;       // 0..0.10
+        const bodyStart = 880 + col * 55 + jitter * 80; // 880..1335 Hz
+        const bodyEnd = 200 + col * 12;                  // 200..272 Hz
+        const subStart = 110 + col * 8;                  // 110..158 Hz
 
-        // Дополнительный призвук (металлический «тынк»)
-        const osc2 = this.audioCtx.createOscillator();
-        const gain2 = this.audioCtx.createGain();
-        osc2.type = 'triangle';
-        osc2.frequency.setValueAtTime(1800, now + 0.01);
-        osc2.frequency.exponentialRampToValueAtTime(700, now + 0.08);
-        gain2.gain.setValueAtTime(0.06, now + 0.01);
-        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-        osc2.connect(gain2);
-        gain2.connect(this.audioCtx.destination);
-        osc2.start(now + 0.01);
-        osc2.stop(now + 0.1);
+        // 1) САБ-удар — низкий толчок, даёт «поп»-панч
+        const sub = this.audioCtx.createOscillator();
+        const subGain = this.audioCtx.createGain();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(subStart, now);
+        sub.frequency.exponentialRampToValueAtTime(60, now + 0.08);
+        subGain.gain.setValueAtTime(0.18, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
+        sub.connect(subGain).connect(this.audioCtx.destination);
+        sub.start(now); sub.stop(now + 0.10);
+
+        // 2) ОСНОВНОЙ тел-тон — быстрый pitch-fall (характерный «поп»)
+        const body = this.audioCtx.createOscillator();
+        const bodyGain = this.audioCtx.createGain();
+        body.type = 'sine';
+        body.frequency.setValueAtTime(bodyStart, now);
+        body.frequency.exponentialRampToValueAtTime(bodyEnd, now + 0.09);
+        bodyGain.gain.setValueAtTime(0.16, now);
+        bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+        body.connect(bodyGain).connect(this.audioCtx.destination);
+        body.start(now); body.stop(now + 0.13);
+
+        // 3) МЕТАЛЛИЧЕСКАЯ гармоника — sparkle
+        const harm = this.audioCtx.createOscillator();
+        const harmGain = this.audioCtx.createGain();
+        harm.type = 'triangle';
+        harm.frequency.setValueAtTime(bodyStart * 2.1, now + 0.005);
+        harm.frequency.exponentialRampToValueAtTime(bodyEnd * 1.5, now + 0.07);
+        harmGain.gain.setValueAtTime(0.05, now + 0.005);
+        harmGain.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
+        harm.connect(harmGain).connect(this.audioCtx.destination);
+        harm.start(now + 0.005); harm.stop(now + 0.10);
+
+        // 4) АТАКА-щелчок — короткий tick на самом верху для воздушности
+        const tick = this.audioCtx.createOscillator();
+        const tickGain = this.audioCtx.createGain();
+        tick.type = 'square';
+        tick.frequency.setValueAtTime(3000, now);
+        tickGain.gain.setValueAtTime(0.025, now);
+        tickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+        tick.connect(tickGain).connect(this.audioCtx.destination);
+        tick.start(now); tick.stop(now + 0.025);
+    },
+
+    // Web Audio: «ктоosh» при сбросе листа — пара свистов через lowpass (как смахивание)
+    playResetWhoosh() {
+        if (!this.audioCtx) return;
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const now = this.audioCtx.currentTime;
+
+        const makeSwipe = (startFreq, endFreq, delay) => {
+            const osc = this.audioCtx.createOscillator();
+            const gain = this.audioCtx.createGain();
+            const filter = this.audioCtx.createBiquadFilter();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(startFreq, now + delay);
+            osc.frequency.exponentialRampToValueAtTime(endFreq, now + delay + 0.18);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1200, now + delay);
+            filter.Q.value = 4;
+            gain.gain.setValueAtTime(0.0, now + delay);
+            gain.gain.linearRampToValueAtTime(0.10, now + delay + 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.22);
+            osc.connect(filter).connect(gain).connect(this.audioCtx.destination);
+            osc.start(now + delay); osc.stop(now + delay + 0.22);
+        };
+        // Восходящий свист + парный нисходящий = жест «смахивания»
+        makeSwipe(220, 880, 0);
+        makeSwipe(880, 220, 0.10);
+    },
+
+    // Web Audio: финальный динг когда все пузырьки лопнули — арпеджио C5→E5→G5 + C6 shimmer
+    playCompletionDing() {
+        if (!this.audioCtx) return;
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const now = this.audioCtx.currentTime;
+
+        // C5 = 523.25, E5 = 659.25, G5 = 783.99
+        [523.25, 659.25, 783.99].forEach((freq, i) => {
+            const osc = this.audioCtx.createOscillator();
+            const gain = this.audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + i * 0.10);
+            gain.gain.setValueAtTime(0.0, now + i * 0.10);
+            gain.gain.linearRampToValueAtTime(0.16, now + i * 0.10 + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.10 + 0.55);
+            osc.connect(gain).connect(this.audioCtx.destination);
+            osc.start(now + i * 0.10); osc.stop(now + i * 0.10 + 0.55);
+        });
+
+        // Тёплый хвост на C6 для shimmer
+        const tail = this.audioCtx.createOscillator();
+        const tailGain = this.audioCtx.createGain();
+        tail.type = 'triangle';
+        tail.frequency.setValueAtTime(1046.5, now + 0.20);
+        tailGain.gain.setValueAtTime(0.06, now + 0.20);
+        tailGain.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+        tail.connect(tailGain).connect(this.audioCtx.destination);
+        tail.start(now + 0.20); tail.stop(now + 0.85);
     }
 };
 
