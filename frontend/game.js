@@ -3750,6 +3750,7 @@ class HellfireBallsGame {
         this.ballCount = Math.min(12, this.ballsInReserve);
         this.destroyedThisTurn = 0;
         this.balls = [];
+        this.trail = [];
         this.state = 'AIMING';
         this.updateHUD();
     }
