@@ -2033,17 +2033,20 @@ const game = {
         this.gameScore = 0;
         this.currentGame = gameName;
         document.getElementById('gameScore').textContent = '0';
+        if (gameName === 'hellfire' || gameName === 'nonstop') {
+            // HELLFIRE BALLS owns its own #hellfireScreen — skip shared gameScreen
+            document.getElementById('gameTitle').textContent = '🔥 HELLFIRE BALLS';
+            if (!this._hellfire) this._hellfire = new HellfireBallsGame(this);
+            this._hellfire.start();
+            return;
+        }
         this.switchScreen('gameScreen');
-        
         if (gameName === 'sudoku') {
             document.getElementById('gameTitle').textContent = '🔢 Судоку';
             this.initSudoku();
         } else if (gameName === 'chess') {
             document.getElementById('gameTitle').textContent = '♟️ Шахматы';
             this.initChess();
-        } else if (gameName === 'nonstop') {
-            document.getElementById('gameTitle').textContent = '🎯 Nonstop Balls';
-            this.initNonstopBalls();
         }
     },
 
@@ -3485,6 +3488,795 @@ class DrawingEditor {
 
     getImageData() {
         return this.canvas.toDataURL('image/png');
+    }
+}
+
+
+// ============================================================================
+// HELLFIRE BALLS — endless hell-themed brick-breaker (replaces old 'nonstop')
+// ============================================================================
+class HellfireBallsGame {
+    constructor(parent) {
+        this.parent = parent;
+        this.screen = null;
+        this.canvas = null;
+        this.ctx = null;
+        this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        this.W = 0; this.H = 0;
+        this.cannonX = 0; this.cannonY = 0;
+        this.cannonAngle = -Math.PI / 2;     // default = pointing up
+        this.cols = 6;
+        this.rows = 14;                       // max visible rows
+        this.cellW = 0; this.cellH = 0;
+        this.cellTopOffset = 40;
+        this.defeatLineY = 0;
+        this.blocks = [];
+        this.balls = [];
+        this.particles = [];
+        this.ballCount = 1;                   // salvo size
+        this.ballsInReserve = 1;              // carry over after pickups
+        this.armedBomb = false;
+        this.bombAvailableForTurn = false;
+        this.state = 'AIMING';                // AIMING | SHOOTING | GAME_OVER
+        this.score = 0;
+        this.turn = 0;
+        this.destroyedThisTurn = 0;
+        this.highScore = this._readHighScore();
+        this.running = false;
+        this._lastT = 0;
+        this._onResize = null;
+        this._handlers = [];
+        this.shakeT = 0;
+        this.shakeAmp = 0;
+    }
+
+    _readHighScore() {
+        try { return parseInt(localStorage.getItem('hellfire_high') || '0', 10) || 0; } catch (e) { return 0; }
+    }
+    _writeHighScore(v) {
+        try { localStorage.setItem('hellfire_high', String(v)); } catch (e) {}
+    }
+
+    start() {
+        this.screen = document.getElementById('hellfireScreen');
+        this.canvas = document.getElementById('hellfireCanvas');
+        if (!this.screen || !this.canvas) {
+            console.warn('HellfireBallsGame: missing screen/canvas elements');
+            return;
+        }
+        this.ctx = this.canvas.getContext('2d');
+        this.parent.currentGame = 'hellfire';
+        this.screen.style.display = 'flex';
+        // Hide the shared mini-game screen if it's open underneath
+        const gs = document.getElementById('gameScreen');
+        if (gs) gs.style.display = 'none';
+
+        this.fitCanvas();
+        this.reset();
+        this.bindEvents();
+        this.running = true;
+        this._lastT = performance.now();
+        requestAnimationFrame((t) => this.loop(t));
+    }
+
+    stop() {
+        this.running = false;
+        if (this._onResize) { window.removeEventListener('resize', this._onResize); this._onResize = null; }
+        for (const h of this._handlers) { try { h.el.removeEventListener(h.ev, h.fn); } catch (e) {} }
+        this._handlers = [];
+        if (this.screen) this.screen.style.display = 'none';
+        const go = document.getElementById('hellfireGameover'); if (go) go.classList.remove('show');
+    }
+
+    fitCanvas() {
+        const rect = this.screen.getBoundingClientRect();
+        const maxW = rect.width - 24;
+        const maxH = rect.height - 84;        // leave room for controls bar
+        const ar = 900 / 620;
+        let lw = maxW, lh = maxH;
+        if (lw / lh > ar) lw = lh * ar; else lh = lw / ar;
+        this.W = Math.round(lw);
+        this.H = Math.round(lh);
+        this.canvas.style.width = this.W + 'px';
+        this.canvas.style.height = this.H + 'px';
+        this.canvas.width  = this.W * this.dpr;
+        this.canvas.height = this.H * this.dpr;
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        this.cellW = this.W / this.cols;
+        this.cellH = (this.H - this.cellTopOffset - 130) / this.rows;
+        this.defeatLineY = this.H - 130;
+        this.cannonX = this.W / 2;
+        this.cannonY = this.H - 80;
+    }
+
+    reset() {
+        this.score = 0;
+        this.turn = 0;
+        this.ballCount = 1;
+        this.ballsInReserve = 1;
+        this.armedBomb = false;
+        this.bombAvailableForTurn = false;
+        this.balls = [];
+        this.particles = [];
+        this.destroyedThisTurn = 0;
+        this.state = 'AIMING';
+        this.blocks = [];
+        this.cannonAngle = -Math.PI / 2;
+        this._spawnRowAt(-1, 1);
+        const go = document.getElementById('hellfireGameover'); if (go) go.classList.remove('show');
+        this.updateHUD();
+    }
+
+    // Difficulty curves
+    _hpForTurn(t) {
+        if (t < 2) return 1;
+        if (t < 4) return 2;
+        if (t < 7) return 3;
+        return Math.min(8, 3 + Math.floor((t - 6) / 3));
+    }
+    _densityForTurn(t) { return Math.min(0.95, 0.6 + (t - 1) * 0.05); }
+
+    _spawnRowAt(rowIndex, turn) {
+        const maxHp = this._hpForTurn(turn);
+        const density = this._densityForTurn(turn);
+        for (let c = 0; c < this.cols; c++) {
+            if (Math.random() > density) continue;
+            const r2 = Math.random();
+            let type = 'normal';
+            if (r2 < 0.06) type = 'bomb';
+            else if (r2 < 0.18) type = 'ballBonus';
+            this.blocks.push({
+                col: c, row: rowIndex, type,
+                hp: maxHp, maxHp: maxHp,
+                x: (c + 0.5) * this.cellW,
+                y: this.cellTopOffset + this.cellH * rowIndex + this.cellH / 2,
+                w: this.cellW * 0.9, h: this.cellH * 0.9,
+                seed: (c * 13 + rowIndex * 7) | 0
+            });
+        }
+    }
+
+    // === Fire (player clicked/tapped/clicked fire button) ===
+    fire() {
+        if (this.state !== 'AIMING') return;
+        const n = this.ballCount;
+        const base = this.cannonAngle;
+        const start = (n - 1) / 2;
+        for (let i = 0; i < n; i++) {
+            const a = base + (i - start) * 0.05;
+            this.balls.push({
+                x: this.cannonX, y: this.cannonY - 18,
+                vx: Math.cos(a) * 360, vy: Math.sin(a) * 360,
+                active: true,
+                bombArmed: this.armedBomb,
+                trail: []
+            });
+        }
+        this.armedBomb = false;
+        this.bombAvailableForTurn = false;
+        this.state = 'SHOOTING';
+        HellfireBallsGame.playFireBallLaunch(this.parent.audioCtx);
+        this.updateHUD();
+    }
+
+    // === Step ===
+    step(dt) {
+        // particles always evolve
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vy += 14 * dt;
+            p.life -= dt;
+            if (p.life <= 0) this.particles.splice(i, 1);
+        }
+
+        if (this.state !== 'SHOOTING') return;
+
+        for (const ball of this.balls) {
+            if (!ball.active) continue;
+            ball.x += ball.vx * dt;
+            ball.y += ball.vy * dt;
+
+            if (ball.x - 6 < 0) { ball.x = 6; ball.vx = Math.abs(ball.vx); this._spark(ball, 3); }
+            if (ball.x + 6 > this.W) { ball.x = this.W - 6; ball.vx = -Math.abs(ball.vx); this._spark(ball, 3); }
+            if (ball.y - 6 < 0) { ball.y = 6; ball.vy = Math.abs(ball.vy); this._spark(ball, 3); }
+            if (ball.y - 6 > this.H) { ball.active = false; continue; }
+
+            // AABB vs each block
+            for (let i = 0; i < this.blocks.length; i++) {
+                const b = this.blocks[i];
+                if (b.hp <= 0) continue;
+                const dx = Math.abs(ball.x - b.x);
+                const dy = Math.abs(ball.y - b.y);
+                if (dx <= b.w / 2 + 6 && dy <= b.h / 2 + 6) {
+                    this._handleHit(ball, b, i);
+                    break;     // ball is consumed (or bombs 3x3)
+                }
+            }
+        }
+
+        // Trail decay
+        for (const ball of this.balls) {
+            for (let i = ball.trail.length - 1; i >= 0; i--) {
+                ball.trail[i].life -= dt;
+                if (ball.trail[i].life <= 0) ball.trail.splice(i, 1);
+            }
+            // push current pos into trail
+            if (ball.active) ball.trail.push({ x: ball.x, y: ball.y });
+            if (ball.trail.length > 22) ball.trail.splice(0, ball.trail.length - 22);
+        }
+
+        if (this.balls.every(b => !b.active)) this.endTurn();
+    }
+
+    _spark(ball, n) {
+        for (let i = 0; i < n; i++) {
+            this.particles.push({
+                x: ball.x + (Math.random() - 0.5) * 6,
+                y: ball.y + (Math.random() - 0.5) * 6,
+                vx: (Math.random() - 0.5) * 60,
+                vy: (Math.random() - 0.5) * 60 - 20,
+                life: 0.32, kind: 'spark'
+            });
+        }
+    }
+
+    _handleHit(ball, block, idx) {
+        block.hp -= 1;
+        this._spawnHitParticles(block.x, block.y, block.hp, block.type);
+        HellfireBallsGame.playBlockHit(this.parent.audioCtx);
+
+        let destroyed = false;
+        if (block.hp <= 0) {
+            destroyed = true;
+            this.destroyedThisTurn++;
+            // pickups
+            if (block.type === 'bomb') this.armedBomb = true;
+            if (block.type === 'ballBonus') this.ballsInReserve = Math.min(12, this.ballsInReserve + 1);
+            this._spawnDestroyParticles(block.x, block.y, block.type);
+            HellfireBallsGame.playBlockDestroy(this.parent.audioCtx, block.type);
+            this.blocks.splice(idx, 1);
+        }
+
+        // Hell-bomb consume: first ball to hit any block while armed detonates 3x3
+        if (ball.bombArmed) {
+            ball.bombArmed = false;
+            const center = destroyed ? null : block;
+            // if the originally-hit block died, use ball pos as center of explosion
+            const cx = center ? center.col : Math.max(0, Math.min(this.cols - 1, Math.floor(ball.x / this.cellW)));
+            const cy = center ? center.row : Math.floor((ball.y - this.cellTopOffset) / this.cellH);
+            HellfireBallsGame.playHellBombDetonate(this.parent.audioCtx);
+            this._explode3x3(cx, cy);
+            this.shakeFor(0.4, 18);
+        }
+
+        ball.active = false;
+    }
+
+    _explode3x3(cx, cy) {
+        for (let i = this.blocks.length - 1; i >= 0; i--) {
+            const b = this.blocks[i];
+            if (b.hp <= 0) continue;
+            if (Math.abs(b.col - cx) <= 1 && Math.abs(b.row - cy) <= 1) {
+                this.destroyedThisTurn++;
+                this.score += 10 * Math.max(1, this.turn + 1);
+                // treat bomb-bonus pickup here too
+                if (b.type === 'bomb') this.armedBomb = true;
+                if (b.type === 'ballBonus') this.ballsInReserve = Math.min(12, this.ballsInReserve + 1);
+                this._spawnDestroyParticles(b.x, b.y, b.type);
+                HellfireBallsGame.playBlockDestroy(this.parent.audioCtx, b.type);
+                this.blocks.splice(i, 1);
+            }
+        }
+    }
+
+    _spawnHitParticles(x, y, hpLeft, type) {
+        const baseN = 4 + Math.max(0, Math.floor((1 - hpLeft / 5) * 8));
+        for (let i = 0; i < baseN; i++) {
+            const ang = Math.PI * 2 * Math.random();
+            const sp = 60 + Math.random() * 90;
+            this.particles.push({
+                x, y,
+                vx: Math.cos(ang) * sp,
+                vy: Math.sin(ang) * sp - 30,
+                life: 0.45, kind: type === 'bomb' ? 'bomb' : (type === 'ballBonus' ? 'bonus' : 'hit')
+            });
+        }
+    }
+
+    _spawnDestroyParticles(x, y, type) {
+        const n = 26;
+        for (let i = 0; i < n; i++) {
+            const ang = (Math.PI * 2 / n) * i + (Math.random() - 0.5) * 0.6;
+            const sp = 80 + Math.random() * 160;
+            this.particles.push({
+                x: x + (Math.random() - 0.5) * 8,
+                y: y + (Math.random() - 0.5) * 8,
+                vx: Math.cos(ang) * sp,
+                vy: Math.sin(ang) * sp - 60,
+                life: 0.8, kind: type === 'bomb' ? 'bomb' : (type === 'ballBonus' ? 'bonus' : 'destroy')
+            });
+        }
+    }
+
+    endTurn() {
+        if (this.state !== 'SHOOTING') return;
+        this.state = 'RESOLVING';
+
+        // Combo & per-turn score
+        if (this.destroyedThisTurn > 0) {
+            const basePerBlock = 10 * Math.max(1, this.turn + 1);
+            const baseTotal = basePerBlock * this.destroyedThisTurn;
+            const mult = 1 + 0.5 * Math.max(0, this.destroyedThisTurn - 1);
+            const gained = Math.round(baseTotal * mult);
+            this.score += gained;
+            if (this.destroyedThisTurn >= 2) this._showCombo(this.destroyedThisTurn, mult);
+        }
+
+        // Shift blocks down by one row, then spawn fresh above
+        for (const b of this.blocks) {
+            b.row += 1;
+            b.y += this.cellH;
+        }
+        // Game-over check (after shift-down but before new row)
+        for (const b of this.blocks) {
+            if (b.hp > 0 && b.y + b.h / 2 >= this.defeatLineY) {
+                this.state = 'GAME_OVER';
+                this._gameOver();
+                this.updateHUD();
+                return;
+            }
+        }
+
+        this.turn++;
+        this._spawnRowAt(-1, this.turn + 1);
+
+        this.ballCount = Math.min(12, this.ballsInReserve);
+        this.destroyedThisTurn = 0;
+        this.state = 'AIMING';
+        this.updateHUD();
+    }
+
+    _showCombo(n, mult) {
+        const el = document.getElementById('hellfireCombo');
+        if (!el) return;
+        el.textContent = 'COMBO ×' + mult.toFixed(1) + '   🔥 ' + n + ' 🎯';
+        el.classList.remove('show');
+        void el.offsetWidth;
+        el.classList.add('show');
+    }
+
+    _gameOver() {
+        this.running = false;
+        const fs = document.getElementById('hellfireFinalScore');
+        if (fs) fs.textContent = this.score;
+        const bl = document.getElementById('hellfireBestLine');
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            this._writeHighScore(this.highScore);
+            if (bl) bl.innerHTML = '🏆 Новый рекорд!';
+        } else {
+            if (bl) bl.innerHTML = 'Лучший результат: <b>' + this.highScore + '</b>';
+        }
+        const go = document.getElementById('hellfireGameover');
+        if (go) go.classList.add('show');
+    }
+
+    shakeFor(secs, amp) { this.shakeT = secs; this.shakeAmp = amp; }
+
+    // === Aiming ===
+    aimEvent(clientX, clientY) {
+        if (this.state !== 'AIMING') return;
+        const rect = this.canvas.getBoundingClientRect();
+        const x = (clientX - rect.left);
+        const y = (clientY - rect.top);
+        const dx = x - this.cannonX;
+        const dy = y - this.cannonY;
+        let ang = Math.atan2(dy, dx);
+        // Only allow cannon to face up; if cursor is below cannon, clamp up to near-horizontal
+        if (y > this.cannonY + 4) {
+            if (Math.abs(dx) < 0.001) { ang = -Math.PI / 2; }
+            else {
+                const horiz = Math.asin(Math.min(0.9, (this.cannonY + 4 - y) / 200));
+                // Pinned just above horizontal: sin(ang) in [-1, -0.05]
+                ang = dx > 0 ? -horiz : (-Math.PI + horiz);
+            }
+        }
+        // Final clamp to (PI, 2PI) ∪ (−PI, 0); tighter: −π … 0 (facing up)
+        if (ang > -0.05) ang = -0.05;
+        if (ang < -Math.PI + 0.05) ang = -Math.PI + 0.05;
+        this.cannonAngle = ang;
+    }
+
+    // === Events ===
+    bindEvents() {
+        const onMove = (e) => this.aimEvent(e.clientX, e.clientY);
+        const onDown = (e) => { if (e.button !== 0) return; if (this.state === 'AIMING') { this.fire(); e.preventDefault(); } };
+        const onTouchStart = (e) => {
+            if (!e.touches || e.touches.length === 0) return;
+            const t = e.touches[0];
+            this.aimEvent(t.clientX, t.clientY);
+            if (this.state === 'AIMING') { this.fire(); e.preventDefault(); }
+        };
+        const onTouchMove = (e) => {
+            if (!e.touches || e.touches.length === 0) return;
+            const t = e.touches[0];
+            this.aimEvent(t.clientX, t.clientY);
+            e.preventDefault();
+        };
+        this._onResize = () => this.fitCanvas();
+        window.addEventListener('resize', this._onResize);
+
+        this.canvas.addEventListener('mousemove', onMove);
+        this.canvas.addEventListener('mousedown', onDown);
+        this.canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+        this.canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+        this._handlers.push({ el: this.canvas, ev: 'mousemove', fn: onMove });
+        this._handlers.push({ el: this.canvas, ev: 'mousedown', fn: onDown });
+        this._handlers.push({ el: this.canvas, ev: 'touchstart', fn: onTouchStart });
+        this._handlers.push({ el: this.canvas, ev: 'touchmove', fn: onTouchMove });
+
+        const fire = document.getElementById('hellfireFire');
+        const close = document.getElementById('hellfireClose');
+        const restart = document.getElementById('hellfireRestart');
+        if (fire) {
+            const fn = () => { if (this.state === 'AIMING') this.fire(); };
+            fire.addEventListener('click', fn);
+            this._handlers.push({ el: fire, ev: 'click', fn });
+        }
+        if (close) {
+            const fn = () => {
+                this.stop();
+                if (this.parent.switchScreen) this.parent.switchScreen('minigamesScreen');
+            };
+            close.addEventListener('click', fn);
+            this._handlers.push({ el: close, ev: 'click', fn });
+        }
+        if (restart) {
+            const fn = () => {
+                this.reset();
+                this.running = true;
+                this._lastT = performance.now();
+                requestAnimationFrame((t) => this.loop(t));
+            };
+            restart.addEventListener('click', fn);
+            this._handlers.push({ el: restart, ev: 'click', fn });
+        }
+    }
+
+    updateHUD() {
+        const $ = (id) => document.getElementById(id);
+        const s = $('hellfireScore'), h = $('hellfireHigh'), w = $('hellfireWave'),
+              a = $('hellfireAmmo'), b = $('hellfireBomb');
+        if (s) s.textContent = this.score;
+        if (h) h.textContent = Math.max(this.highScore, this.score);
+        if (w) w.textContent = this.turn + 1;
+        if (a) a.textContent = '⚔ ' + this.ballCount;
+        if (b) {
+            b.textContent = this.armedBomb ? '💣 ГОТОВА' : '💣 —';
+            b.classList.toggle('armed', !!this.armedBomb);
+        }
+    }
+
+    loop(t) {
+        if (!this.running) return;
+        const dt = Math.min(0.05, (t - this._lastT) / 1000);
+        this._lastT = t;
+        this.step(dt);
+        this._draw();
+        if (this.state === 'SHOOTING') this.updateHUD();
+        requestAnimationFrame((tt) => this.loop(tt));
+    }
+
+    _draw() {
+        const ctx = this.ctx;
+        const W = this.W, H = this.H;
+        ctx.save();
+        if (this.shakeT && this.shakeT > 0) {
+            this.shakeT -= 1 / 60;
+            ctx.translate((Math.random() - 0.5) * this.shakeAmp, (Math.random() - 0.5) * this.shakeAmp);
+        }
+        // Hell gradient background
+        const bg = ctx.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, '#1a0504');
+        bg.addColorStop(0.5, '#2c0a06');
+        bg.addColorStop(1, '#0a0202');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        // Glow embers / runes
+        ctx.fillStyle = 'rgba(255, 130, 60, 0.05)';
+        for (let i = 0; i < 14; i++) {
+            const ex = (i * 73) % W;
+            const ey = (i * 41) % (H - 60);
+            ctx.beginPath();
+            ctx.arc(ex, ey, 2 + (i % 3), 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Lava defeat line
+        const ly = this.defeatLineY;
+        const lg = ctx.createLinearGradient(0, ly - 5, 0, ly + 6);
+        lg.addColorStop(0, 'rgba(255, 180, 70, 0.9)');
+        lg.addColorStop(0.5, 'rgba(255, 90, 30, 0.95)');
+        lg.addColorStop(1, 'rgba(80, 0, 0, 0)');
+        ctx.fillStyle = lg;
+        ctx.fillRect(0, ly - 5, W, 12);
+        ctx.fillStyle = 'rgba(255, 90, 20, 0.18)';
+        ctx.fillRect(0, ly + 4, W, 28);
+
+        // Blocks
+        for (const b of this.blocks) this._drawBlock(ctx, b);
+
+        // Balls + trails
+        for (const ball of this.balls) {
+            for (const t of ball.trail) {
+                ctx.globalAlpha = 0.55;
+                ctx.fillStyle = '#ff6020';
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            if (ball.active) this._drawFireball(ctx, ball);
+        }
+
+        this._drawCannon(ctx);
+        if (this.state === 'AIMING') this._drawAimLine(ctx);
+
+        // Particles on top
+        for (const p of this.particles) {
+            ctx.globalAlpha = Math.max(0, p.life / 0.8);
+            if (p.kind === 'spark')      ctx.fillStyle = '#ffd060';
+            else if (p.kind === 'hit')  ctx.fillStyle = '#ff7040';
+            else if (p.kind === 'destroy') { ctx.fillStyle = (Math.random() < 0.5) ? '#ff8030' : '#702010'; }
+            else if (p.kind === 'bomb')  ctx.fillStyle = '#ff4020';
+            else if (p.kind === 'bonus') ctx.fillStyle = '#ffd060';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+    }
+
+    _roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    }
+
+    _drawBlock(ctx, b) {
+        const x = b.x, y = b.y, w = b.w, h = b.h;
+        const bodyColor = b.type === 'bomb' ? '#400808'
+                       : b.type === 'ballBonus' ? '#3a2010'
+                       : '#1f0a08';
+        const strokeColor = b.type === 'bomb' ? '#ff4020'
+                          : b.type === 'ballBonus' ? '#ffd060'
+                          : '#6a2010';
+        ctx.fillStyle = bodyColor;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.5;
+        this._roundRect(ctx, x - w / 2, y - h / 2, w, h, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // Cracks: glow brighter when HP low
+        const dmgRatio = 1 - b.hp / Math.max(1, b.maxHp);
+        const glowAlpha = (0.35 + dmgRatio * 0.65).toFixed(2);
+        ctx.strokeStyle = 'rgba(255, 140, 50, ' + glowAlpha + ')';
+        ctx.lineWidth = 1 + dmgRatio * 1.4;
+        ctx.beginPath();
+        const s = b.seed;
+        for (let i = 0; i < 3; i++) {
+            const dx = (((s * (i + 1) * 31) % 100) / 100) - 0.5;
+            const dy = (((s * (i + 2) * 41) % 100) / 100) - 0.5;
+            const cx = x + dx * w / 2;
+            const cy = y + dy * h / 2;
+            ctx.moveTo(cx - 4, cy - 4); ctx.lineTo(cx + 4, cy + 4);
+            ctx.moveTo(cx - 4, cy + 4); ctx.lineTo(cx + 4, cy - 4);
+        }
+        ctx.stroke();
+
+        ctx.font = 'bold 13px Trebuchet MS';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        if (b.type === 'bomb') {
+            ctx.fillStyle = '#ff4020'; ctx.font = 'bold 16px serif';
+            ctx.fillText('☠', x, y);
+        } else if (b.type === 'ballBonus') {
+            ctx.fillStyle = '#ffd060'; ctx.font = 'bold 14px serif';
+            ctx.fillText('+⚔', x, y);
+        } else {
+            ctx.fillStyle = 'rgba(255, 220, 180, 0.95)';
+            ctx.fillText(b.hp + '/' + b.maxHp, x, y);
+        }
+    }
+
+    _drawFireball(ctx, ball) {
+        const halo = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, 14);
+        halo.addColorStop(0, 'rgba(255, 200, 90, 0.95)');
+        halo.addColorStop(0.4, 'rgba(255, 120, 30, 0.85)');
+        halo.addColorStop(1, 'rgba(255, 60, 0, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, 14, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff8d0';
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 80, 0, 0.55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, 7, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    _drawCannon(ctx) {
+        const cx = this.cannonX, cy = this.cannonY;
+        ctx.save();
+        const halo = ctx.createRadialGradient(cx, cy, 1, cx, cy, 60);
+        halo.addColorStop(0, 'rgba(255, 100, 30, 0.4)');
+        halo.addColorStop(1, 'rgba(255, 60, 0, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(cx, cy, 60, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = '#1a0604';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 8, 38, 26, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#6a2010';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#ff5020';
+        ctx.beginPath();
+        ctx.arc(cx - 12, cy + 4, 5, 0, Math.PI * 2);
+        ctx.arc(cx + 12, cy + 4, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.translate(cx, cy);
+        ctx.rotate(this.cannonAngle);
+        ctx.fillStyle = '#3a0a04';
+        ctx.strokeStyle = '#ff4020';
+        ctx.lineWidth = 2;
+        this._roundRect(ctx, -10, -36, 20, 36, 4);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ff8040';
+        ctx.beginPath(); ctx.arc(0, -36, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+
+    _drawAimLine(ctx) {
+        ctx.save();
+        ctx.translate(this.cannonX, this.cannonY - 18);
+        ctx.rotate(this.cannonAngle);
+        ctx.strokeStyle = 'rgba(255, 200, 120, 0.65)';
+        ctx.setLineDash([6, 8]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -36);
+        ctx.lineTo(0, -300);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+    }
+
+    // ============ Static audio helpers (Web Audio, no samples) ============
+    static _safeEnsure(audioCtx) {
+        if (!audioCtx) return null;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return audioCtx;
+    }
+
+    static playFireBallLaunch(audioCtx) {
+        const c = HellfireBallsGame._safeEnsure(audioCtx); if (!c) return;
+        const t = c.currentTime;
+        // whistle-up tone for muzzle blast
+        const o = c.createOscillator(); const g = c.createGain();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(220, t);
+        o.frequency.exponentialRampToValueAtTime(880, t + 0.12);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.18, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        o.connect(g).connect(c.destination);
+        o.start(t); o.stop(t + 0.2);
+        // sub-thump
+        const s = c.createOscillator(); const sg = c.createGain();
+        s.type = 'sine';
+        s.frequency.setValueAtTime(110, t);
+        s.frequency.exponentialRampToValueAtTime(40, t + 0.1);
+        sg.gain.setValueAtTime(0.0001, t);
+        sg.gain.linearRampToValueAtTime(0.16, t + 0.02);
+        sg.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        s.connect(sg).connect(c.destination);
+        s.start(t); s.stop(t + 0.15);
+    }
+
+    static playBlockHit(audioCtx) {
+        const c = HellfireBallsGame._safeEnsure(audioCtx); if (!c) return;
+        const t = c.currentTime;
+        const o = c.createOscillator(); const g = c.createGain();
+        o.type = 'square';
+        o.frequency.setValueAtTime(950, t);
+        o.frequency.exponentialRampToValueAtTime(380, t + 0.06);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.16, t + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+        o.connect(g).connect(c.destination);
+        o.start(t); o.stop(t + 0.09);
+    }
+
+    static playBlockDestroy(audioCtx, type) {
+        const c = HellfireBallsGame._safeEnsure(audioCtx); if (!c) return;
+        const t = c.currentTime;
+        // explosion: filtered noise burst + low rumble
+        const bufLen = 0.18 * c.sampleRate;
+        const buf = c.createBuffer(1, bufLen, c.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) {
+            const k = 1 - i / bufLen;
+            d[i] = (Math.random() * 2 - 1) * k * k;
+        }
+        const src = c.createBufferSource(); src.buffer = buf;
+        const filt = c.createBiquadFilter();
+        filt.type = 'lowpass';
+        filt.frequency.setValueAtTime(type === 'bomb' ? 1800 : 1200, t);
+        filt.Q.value = 1.2;
+        const ng = c.createGain();
+        ng.gain.setValueAtTime(type === 'bomb' ? 0.28 : 0.22, t);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        src.connect(filt).connect(ng).connect(c.destination);
+        src.start(t); src.stop(t + 0.2);
+        // sub rumble
+        const s = c.createOscillator(); const sg = c.createGain();
+        s.type = 'sine';
+        s.frequency.setValueAtTime(140, t);
+        s.frequency.exponentialRampToValueAtTime(45, t + 0.16);
+        sg.gain.setValueAtTime(0.0001, t);
+        sg.gain.linearRampToValueAtTime(0.20, t + 0.01);
+        sg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        s.connect(sg).connect(c.destination);
+        s.start(t); s.stop(t + 0.24);
+    }
+
+    static playHellBombDetonate(audioCtx) {
+        const c = HellfireBallsGame._safeEnsure(audioCtx); if (!c) return;
+        const t = c.currentTime;
+        // BIG filtered noise burst (350 ms) + sub-bass sine 100 -> 30 Hz
+        const bufLen = 0.35 * c.sampleRate;
+        const buf = c.createBuffer(1, bufLen, c.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) {
+            const k = 1 - i / bufLen;
+            d[i] = (Math.random() * 2 - 1) * Math.pow(k, 0.7);
+        }
+        const src = c.createBufferSource(); src.buffer = buf;
+        const filt = c.createBiquadFilter();
+        filt.type = 'lowpass';
+        filt.frequency.setValueAtTime(2400, t);
+        filt.frequency.exponentialRampToValueAtTime(400, t + 0.32);
+        filt.Q.value = 1.6;
+        const ng = c.createGain();
+        ng.gain.setValueAtTime(0.001, t);
+        ng.gain.linearRampToValueAtTime(0.32, t + 0.02);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+        src.connect(filt).connect(ng).connect(c.destination);
+        src.start(t); src.stop(t + 0.4);
+        // deep rumble
+        const s = c.createOscillator(); const sg = c.createGain();
+        s.type = 'sine';
+        s.frequency.setValueAtTime(100, t);
+        s.frequency.exponentialRampToValueAtTime(30, t + 0.30);
+        sg.gain.setValueAtTime(0.0001, t);
+        sg.gain.linearRampToValueAtTime(0.26, t + 0.02);
+        sg.gain.exponentialRampToValueAtTime(0.001, t + 0.40);
+        s.connect(sg).connect(c.destination);
+        s.start(t); s.stop(t + 0.42);
     }
 }
 
