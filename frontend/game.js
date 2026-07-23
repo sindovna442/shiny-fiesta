@@ -125,7 +125,7 @@ const game = {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(1800, now);
         osc.frequency.exponentialRampToValueAtTime(300, now + 0.06);
-        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.setValueAtTime(0.14, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
@@ -137,7 +137,7 @@ const game = {
         osc2.type = 'sine';
         osc2.frequency.setValueAtTime(2200, now + 0.04);
         osc2.frequency.exponentialRampToValueAtTime(400, now + 0.1);
-        gain2.gain.setValueAtTime(0.12, now + 0.04);
+        gain2.gain.setValueAtTime(0.08, now + 0.04);
         gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
         osc2.connect(gain2);
         gain2.connect(this.audioCtx.destination);
@@ -159,7 +159,7 @@ const game = {
             osc.type = 'sine';
             osc.frequency.setValueAtTime(freq, t);
             osc.frequency.exponentialRampToValueAtTime(freq * 0.15, t + 0.05);
-            g.gain.setValueAtTime(0.08 + Math.random() * 0.06, t);
+            g.gain.setValueAtTime(0.05 + Math.random() * 0.04, t);
             g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
             osc.connect(g);
             g.connect(this.audioCtx.destination);
@@ -179,7 +179,7 @@ const game = {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(900, now);
         osc.frequency.exponentialRampToValueAtTime(120, now + 0.07);
-        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.setValueAtTime(0.16, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
@@ -194,7 +194,7 @@ const game = {
             o.type = 'sine';
             o.frequency.setValueAtTime(f, t);
             o.frequency.exponentialRampToValueAtTime(f * 0.1, t + 0.04);
-            g.gain.setValueAtTime(0.1, t);
+            g.gain.setValueAtTime(0.07, t);
             g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
             o.connect(g);
             g.connect(this.audioCtx.destination);
