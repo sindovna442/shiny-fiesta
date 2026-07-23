@@ -14,6 +14,11 @@ const game = {
     hoveredItem: null,
     dragState: { active: false, type: null, index: -1, offsetX: 0, offsetY: 0, startX: 0, startY: 0 },
     particles: [],
+
+    // rAF-animation loop for pet canvas (gated to mainScreen)
+    _petAnimFrame: null,
+    _petAnimLoopRunning: false,
+    _mainScreenActive: false,
     
     // Система звука
     audioCtx: null,
@@ -34,24 +39,30 @@ const game = {
     // Инициализация игры
     async init() {
         console.log('Initializing game...');
-        
-        // Создаём или загружаем питомца
-        await this.createNewPet();
-        
-        // Инициализируем редактор рисования
+
+        // Try to reuse the saved petId from localStorage first.
+        const reused = await this.tryReuseExistingPet();
+        if (!reused) {
+            await this.createNewPet();
+        }
+
+        // Drawing editor
         this.editor = new DrawingEditor();
-        
-        // Инициализируем обработчики Canvas
+
+        // Canvas event handlers
         this.setupCanvasEvents();
-        
-        // Инициализируем AudioContext
+
+        // AudioContext
         this.initAudio();
-        
-        // Обновляем состояние каждые 2 секунды
+
+        // 2-second stats tick
         this.startGameLoop();
-        
-        // Обновляем UI
+
+        // Update UI
         this.updateUI();
+
+        // Pet animation rAF loop (gated to mainScreen)
+        this.startPetAnimLoop();
     },
 
     // Инициализация аудио
@@ -559,11 +570,14 @@ const game = {
                     name: 'Демонический Кот'
                 })
             });
-            
+
             const data = await response.json();
             this.petId = data.pet_id;
             this.pet = data.pet;
-            
+
+            // Save petId to localStorage so the same pet persists across reloads
+            try { localStorage.setItem('demonCatPetId', this.petId); } catch (e) {}
+
             console.log('Pet created:', this.petId);
         } catch (error) {
             console.error('Error creating pet:', error);
@@ -719,6 +733,45 @@ const game = {
     // Перерисовка при смене комнаты (без setInterval, по запросу)
     redrawPetNow() {
         this.drawPet();
+    },
+    // ===== rAF animation loop for pet canvas =====
+    petAnimLoop() {
+        if (!this._petAnimLoopRunning) return; // safety
+        this.drawPet();
+        this._petAnimFrame = requestAnimationFrame(() => this.petAnimLoop());
+    },
+    startPetAnimLoop() {
+        if (this._petAnimLoopRunning) return; // idempotent
+        this._petAnimLoopRunning = true;
+        this._mainScreenActive = true;
+        this.petAnimLoop();
+    },
+    stopPetAnimLoop() {
+        this._petAnimLoopRunning = false;
+        this._mainScreenActive = false;
+        if (this._petAnimFrame) {
+            cancelAnimationFrame(this._petAnimFrame);
+            this._petAnimFrame = null;
+        }
+    },
+
+    // ===== localStorage petId reuse =====
+    async tryReuseExistingPet() {
+        let stored = null;
+        try { stored = localStorage.getItem('demonCatPetId'); } catch (e) { return false; }
+        if (!stored) return false;
+        try {
+            const resp = await fetch(`${API_BASE}/pet/${stored}`);
+            if (!resp.ok) return false;
+            const pet = await resp.json();
+            if (pet && pet.pet_id) {
+                this.petId = pet.pet_id;
+                this.pet = pet;
+                console.log("Pet reused:", this.petId);
+                return true;
+            }
+        } catch (e) {}
+        return false;
     },
 
     // Только обновить курсор при hover без полной перерисовки
@@ -1741,9 +1794,6 @@ const game = {
             ctx.shadowBlur = 0;
             
             // Рамка
-            ctx.strokeStyle = '#ddd';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
         };
         img.src = page.imageData;
         
@@ -2846,6 +2896,10 @@ const game = {
 
     // Переключение экрана
     switchScreen(screenId) {
+        // Pet animation rAF loop only runs while mainScreen is active
+        if (screenId === 'mainScreen') this.startPetAnimLoop();
+        else this.stopPetAnimLoop();
+
         document.querySelectorAll('.screen').forEach(screen => {
             screen.classList.remove('active');
         });

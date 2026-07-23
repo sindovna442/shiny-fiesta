@@ -12,6 +12,63 @@ CORS(app)
 pets_data = {}
 user_sketches = {}
 
+# === Persistence: pets + sketches survive Flask restarts (JSON files) ===
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+PETS_FILE = os.path.join(DATA_DIR, 'pets_data.json')
+SKETCHES_FILE = os.path.join(DATA_DIR, 'user_sketches.json')
+
+
+def _save_state():
+    """Persist pets + sketches to disk after every mutation."""
+    try:
+        serializable = {}
+        for pid, pet in pets_data.items():
+            try:
+                serializable[pid] = pet.to_dict()
+            except Exception:
+                pass
+        with open(PETS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(serializable, f, ensure_ascii=False)
+    except Exception as e:
+        print(f'_save_state pets error: {e}', flush=True)
+    try:
+        with open(SKETCHES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(user_sketches, f, ensure_ascii=False)
+    except Exception as e:
+        print(f'_save_state sketches error: {e}', flush=True)
+
+
+def _load_state():
+    """Restore pets + sketches from disk on backend startup."""
+    if os.path.exists(PETS_FILE):
+        try:
+            with open(PETS_FILE, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+            for pid, p_dict in raw.items():
+                try:
+                    if hasattr(DemonCat, 'from_dict'):
+                        pets_data[pid] = DemonCat.from_dict(p_dict)
+                    else:
+                        cat = DemonCat.__new__(DemonCat)
+                        cat.__dict__.update(p_dict)
+                        pets_data[pid] = cat
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f'_load_state pets error: {e}', flush=True)
+    if os.path.exists(SKETCHES_FILE):
+        try:
+            with open(SKETCHES_FILE, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                user_sketches.update(loaded)
+        except Exception as e:
+            print(f'_load_state sketches error: {e}', flush=True)
+
+
+_load_state()
+
 # Pet Constants
 PET_STATES = {
     'BABY': 0,
@@ -235,6 +292,7 @@ def get_pet(pet_id):
     pet = pets_data[pet_id]
     pet.decay_stats()  # Обновить показатели
     
+    _save_state()
     return jsonify(pet.to_dict())
 
 
