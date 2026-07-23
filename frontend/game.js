@@ -2886,6 +2886,95 @@ const game = {
             link.click();
             this.addNotification('Скачано: ' + filename, 'success');
         }, 'image/png');
+    },
+
+    // ===== АНТИСТРЕСС: пузырчатая плёнка =====
+    antiStressTotalBubbles: 18,
+    antiStressPopped: 0,
+    antiStressInitialized: false,
+
+    // Открыть оверлей антистресса
+    openAntiStress() {
+        if (!this.antiStressInitialized) {
+            this.buildAntiStressSheet();
+            this.antiStressInitialized = true;
+        }
+        document.getElementById('antiStressOverlay').classList.add('open');
+    },
+
+    // Закрыть оверлей антистресса
+    closeAntiStress() {
+        document.getElementById('antiStressOverlay').classList.remove('open');
+    },
+
+    // Построить сетку пузырьков (6 × 3)
+    buildAntiStressSheet() {
+        const sheet = document.getElementById('antiStressSheet');
+        sheet.innerHTML = '';
+        for (let i = 0; i < this.antiStressTotalBubbles; i++) {
+            const bubble = document.createElement('div');
+            bubble.className = 'anti-stress-bubble';
+            bubble.dataset.idx = i;
+            bubble.addEventListener('click', () => this.popAntiStressBubble(bubble));
+            sheet.appendChild(bubble);
+        }
+        this.antiStressPopped = 0;
+    },
+
+    // Лопнуть один пузырёк (каждый со своим хитбоксом)
+    popAntiStressBubble(bubble) {
+        if (bubble.classList.contains('popped')) return;
+        bubble.classList.add('popping');
+        setTimeout(() => {
+            bubble.classList.remove('popping');
+            bubble.classList.add('popped');
+        }, 180);
+        this.antiStressPopped++;
+        this.playBubblePop();
+    },
+
+    // Заменить лист на новый (сбросить все пузырьки)
+    resetAntiStress() {
+        const sheet = document.getElementById('antiStressSheet');
+        sheet.querySelectorAll('.anti-stress-bubble').forEach(b => {
+            b.classList.remove('popped', 'popping');
+        });
+        this.antiStressPopped = 0;
+        this.playBubblePop();
+        this.addNotification('Новый лист антистресса готов 💆', 'info');
+    },
+
+    // Web Audio: короткий «поп» звук
+    playBubblePop() {
+        if (!this.audioCtx) return;
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const now = this.audioCtx.currentTime;
+
+        // Основной тон: быстрый спад высокой частоты (характерный «поп»)
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(950, now);
+        osc.frequency.exponentialRampToValueAtTime(220, now + 0.09);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.12);
+
+        // Дополнительный призвук (металлический «тынк»)
+        const osc2 = this.audioCtx.createOscillator();
+        const gain2 = this.audioCtx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(1800, now + 0.01);
+        osc2.frequency.exponentialRampToValueAtTime(700, now + 0.08);
+        gain2.gain.setValueAtTime(0.06, now + 0.01);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc2.connect(gain2);
+        gain2.connect(this.audioCtx.destination);
+        osc2.start(now + 0.01);
+        osc2.stop(now + 0.1);
     }
 };
 

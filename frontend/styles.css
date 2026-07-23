@@ -835,6 +835,198 @@ body {
 }
 
 /* ===== АДАПТИВНОСТЬ ===== */
+
+/* ===== АНТИСТРЕСС (ПУЗЫРЧАТАЯ ПЛЁНКА) ===== */
+.anti-stress-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+    animation: antiStressFadeIn 0.25s ease-out;
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
+}
+
+.anti-stress-overlay.open {
+    display: flex;
+}
+
+@keyframes antiStressFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.anti-stress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+}
+
+.anti-stress-sheet {
+    position: relative;
+    background: linear-gradient(135deg, #6FA8DC 0%, #4F8FCB 50%, #3D7BB8 100%);
+    border-radius: 22px;
+    padding: 28px 32px;
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.45),
+        inset 0 2px 4px rgba(255, 255, 255, 0.35),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.18);
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 22px;
+    width: min(560px, 80vw);
+    aspect-ratio: 6 / 3;
+}
+
+/* === Целый пузырёк: глянцевый, объёмный === */
+.anti-stress-bubble {
+    background: radial-gradient(circle at 30% 28%, #ffffff 0%, #f0f7ff 55%, #b8d4f0 95%);
+    border-radius: 50%;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.15s ease-out, box-shadow 0.2s;
+    box-shadow:
+        inset 0 0 14px rgba(255, 255, 255, 0.65),
+        inset 0 -5px 6px rgba(60, 90, 130, 0.08),
+        0 3px 8px rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+}
+
+/* Белый блик в форме дуги */
+.anti-stress-bubble::before {
+    content: '';
+    position: absolute;
+    top: 14%;
+    left: 18%;
+    width: 26%;
+    height: 32%;
+    border: 3.5px solid rgba(255, 255, 255, 0.95);
+    border-color: rgba(255, 255, 255, 0.95) transparent transparent transparent;
+    border-radius: 50%;
+    transform: rotate(-30deg);
+}
+
+/* Маленькая точка-блик */
+.anti-stress-bubble::after {
+    content: '';
+    position: absolute;
+    top: 36%;
+    left: 37%;
+    width: 8%;
+    height: 8%;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+}
+
+.anti-stress-bubble:hover:not(.popped) {
+    transform: scale(1.05);
+    box-shadow:
+        inset 0 0 18px rgba(255, 255, 255, 0.85),
+        0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+/* === Лопнутый пузырёк: неровный серый «блин» === */
+.anti-stress-bubble.popped {
+    background: radial-gradient(ellipse at 40% 40%, #c8ccd3 0%, #98a0aa 55%, #6f7682 100%);
+    border-radius: 60% 40% 55% 45% / 45% 55% 40% 60%;
+    box-shadow:
+        inset 0 0 12px rgba(0, 0, 0, 0.45),
+        inset 0 -3px 7px rgba(0, 0, 0, 0.2),
+        0 1px 2px rgba(0, 0, 0, 0.2);
+    transform: rotate(2deg) scale(1.05);
+    cursor: default;
+    pointer-events: none;
+}
+
+.anti-stress-bubble.popped::before {
+    content: '';
+    position: absolute;
+    top: 22%;
+    left: 18%;
+    width: 58%;
+    height: 50%;
+    background: radial-gradient(ellipse, rgba(245, 245, 250, 0.35) 0%, rgba(140, 145, 160, 0.55) 50%, rgba(70, 75, 90, 0.4) 100%);
+    border-radius: 60% 40% 50% 50% / 50% 60% 40% 50%;
+    border: 2px solid rgba(55, 60, 75, 0.55);
+    transform: rotate(-15deg);
+}
+
+.anti-stress-bubble.popped::after {
+    display: none;
+}
+
+@keyframes antiStressPopBounce {
+    0% { transform: scale(1); }
+    45% { transform: scale(0.9); }
+    100% { transform: scale(1.05) rotate(2deg); }
+}
+
+.anti-stress-bubble.popping {
+    animation: antiStressPopBounce 0.18s ease-out;
+}
+
+/* === Кнопка закрытия (крестик) === */
+.anti-stress-close {
+    position: fixed;
+    top: 25px;
+    right: 25px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.95);
+    color: #333;
+    border: none;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+    transition: transform 0.15s, background 0.15s;
+    z-index: 10000;
+    line-height: 46px;
+    padding: 0;
+}
+
+.anti-stress-close:hover {
+    transform: scale(1.12) rotate(90deg);
+    background: white;
+}
+
+/* === Стрелка замены листа (справа от плёнки) === */
+.anti-stress-reset {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    transition: transform 0.15s;
+    line-height: 50px;
+    padding: 0;
+}
+
+.anti-stress-reset:hover {
+    transform: scale(1.12);
+    box-shadow: 0 8px 26px rgba(102, 126, 234, 0.7);
+}
+
+.anti-stress-reset:active {
+    transform: scale(0.95);
+}
+
+/* === Кнопка антистресса в главной навигации === */
+.anti-stress-btn {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    color: white;
+}
+
 @media (max-width: 768px) {
     .rooms-container {
         flex-direction: column;
@@ -858,5 +1050,26 @@ body {
 
     #petCanvas {
         max-height: 400px;
+    }
+
+    .anti-stress-sheet {
+        padding: 22px 26px;
+        gap: 14px;
+        width: 88vw;
+    }
+    .anti-stress-reset {
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+        line-height: 42px;
+    }
+    .anti-stress-close {
+        width: 42px;
+        height: 42px;
+        font-size: 20px;
+        line-height: 38px;
+    }
+    .anti-stress-wrap {
+        gap: 18px;
     }
 }
