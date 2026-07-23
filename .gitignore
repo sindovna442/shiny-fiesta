@@ -60,3 +60,4 @@ npm-debug.log
 
 # Logs
 *.log
+.freebuff_tools/
