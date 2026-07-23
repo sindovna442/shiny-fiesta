@@ -25,6 +25,8 @@ const game = {
     
     // Система реакций кота
     catReaction: null,
+    settleDropStart: 0,
+    settleDropKind: null,
     reactionEndTime: 0,
     rooms: [
         { id: 0, name: '🏠 Гостиная', color: '#1a1a2e', petX: 0.5, petY: 0.55 },
@@ -654,6 +656,8 @@ const game = {
             
             if (this.pet.in_bath) {
                 this.addNotification('Кот залез в ванну! 🛁', 'wash');
+            this.settleDropStart = performance.now();
+            this.settleDropKind = 'bath';
             } else {
                 this.addNotification('Кот вылез из ванны! Чистота +30 🧼', 'wash');
                 this.spawnParticles('bathtub', 0, 0);
@@ -675,6 +679,8 @@ const game = {
             
             if (this.pet.in_bed) {
                 this.addNotification('Кот лёг спать... Zzz 💤', 'sleep');
+            this.settleDropStart = performance.now();
+            this.settleDropKind = 'bed';
             } else {
                 this.addNotification('Кот проснулся! Энергия +20 ⚡', 'sleep');
                 this.spawnParticles('bed', 0, 0);
@@ -728,6 +734,24 @@ const game = {
 
         // Рисуем питомца (вызывается не чаще updateInterval)
         this.drawPet();
+    },
+
+    // Перерисовка при смене комнаты (без setInterval, по запросу)
+    // ==== Settle-drop animation (cat visibly drops into bath/bed) ====
+    // Returns a single Y-offset to add when drawing the cat, while
+    // settleDropKind is set. Eases out from DROP_PX -> 0 over 200ms.
+    getSettleDropOffset() {
+        if (!this.settleDropKind) return 0;
+        const DROP_PX = 90;     // how far above its slot the cat starts
+        const DUR_MS = 200;     // length of the drop
+        const elapsed = performance.now() - this.settleDropStart;
+        if (elapsed >= DUR_MS) {
+            this.settleDropKind = null;   // one-shot cleanup
+            return 0;
+        }
+        const t = Math.min(1, elapsed / DUR_MS);
+        const eased = 1 - Math.pow(1 - t, 2);   // quadratic ease-out
+        return DROP_PX * (1 - eased);          // start at +DROP_PX, end at 0
     },
 
     // Перерисовка при смене комнаты (без setInterval, по запросу)
@@ -1132,13 +1156,13 @@ const game = {
         const reactionProgress = reaction ? (now - (this.reactionEndTime - 1500)) / 1500 : 0;
         
         // ===== СПЕЦИАЛЬНЫЕ АНИМАЦИИ =====
+        // Оседание: при входе в ванну/кровать виртуально поднимаем кота,
+        // затем за 200 ms ease-out опускаем обратно — выглядит «упал в ванну/кровать».
+        const dropOffset = (this.pet && (this.pet.in_bath || this.pet.in_bed))
+            ? this.getSettleDropOffset() : 0;
         // Если кот в ванне — рисуем только голову + пузырьки
         if (this.pet && this.pet.in_bath) {
-            return this.drawCatInBath(ctx, x, y, scale, now, reaction);
-        }
-        // Если кот в кровати — спящая поза
-        if (this.pet && this.pet.in_bed) {
-            return this.drawCatInBed(ctx, x, y, scale, now, reaction);
+            return this.drawCatInBath(ctx, x, y + dropOffset, scale, now, reaction);
         }
         
         // ===== СЛОЙ 1 (ЗАДНИЙ): Хвост + Нижние лапы =====
