@@ -2071,6 +2071,14 @@ const game = {
     chessSelected: null,
     chessTurn: 'white',
     chessPossibleMoves: [],
+    chessDifficulty: 'easy',
+    chessAIDepth: 1,
+    
+    // Цвета фигур по референсу
+    chessColors: {
+        white: { body: '#d8c8f0', light: '#e8d8ff', dark: '#b8a0d8', accent: '#9878b8', eyes: '#555', ear: '#c0a8e0' },
+        black: { body: '#3a2a4a', light: '#5a4a6a', dark: '#2a1a3a', accent: '#1a0a2a', eyes: '#ddd', ear: '#4a3a5a' }
+    },
     
     initChess() {
         const canvas = document.getElementById('gameCanvas');
@@ -2107,38 +2115,56 @@ const game = {
         };
         
         document.getElementById('gameControls').innerHTML =
-            '<button class="game-control-btn" onclick="game.initChess()">🔄 Новая игра</button>';
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;">' +
+            '<button class="game-control-btn" onclick="game.chessSetDifficulty(\"easy\")" style="' + (this.chessDifficulty==='easy'?'background:#2ecc71;':'') + '">🐱 Легко</button>' +
+            '<button class="game-control-btn" onclick="game.chessSetDifficulty(\"medium\")" style="' + (this.chessDifficulty==='medium'?'background:#f39c12;':'') + '">😼 Средне</button>' +
+            '<button class="game-control-btn" onclick="game.chessSetDifficulty(\"hard\")" style="' + (this.chessDifficulty==='hard'?'background:#e74c3c;':'') + '">😈 Сложно</button>' +
+            '<button class="game-control-btn" onclick="game.initChess()">🔄 Новая</button>' +
+            '</div>';
         document.onkeydown = null;
     },
-
+    
+    chessSetDifficulty(d) {
+        this.chessDifficulty = d;
+        this.chessAIDepth = d === 'easy' ? 1 : d === 'medium' ? 2 : 3;
+        this.initChess();
+    },
+    
     isWhitePiece(piece) {
-        return '♙♖♗♕♔♘'.includes(piece);
+        return '♔♕♖♗♘♙'.includes(piece);
     },
     
     isBlackPiece(piece) {
-        return '♟♜♝♛♚♞'.includes(piece);
+        return '♚♜♝♞♟'.includes(piece);
     },
-
+    
     handleChessClick(row, col, ctx) {
-        const piece = this.chessBoard[row][col];
+        if (this.chessTurn !== 'white') return;
         
         if (this.chessSelected) {
-            // Пытаемся сделать ход
-            const isMoveValid = this.chessPossibleMoves.some(m => m.row === row && m.col === col);
-            if (isMoveValid) {
-                this.chessBoard[row][col] = this.chessBoard[this.chessSelected.row][this.chessSelected.col];
+            const move = this.chessPossibleMoves.find(m => m.row === row && m.col === col);
+            if (move) {
+                const piece = this.chessBoard[this.chessSelected.row][this.chessSelected.col];
+                this.chessBoard[row][col] = piece;
                 this.chessBoard[this.chessSelected.row][this.chessSelected.col] = '';
-                this.chessTurn = this.chessTurn === 'white' ? 'black' : 'white';
+                
+                // Превращение пешки
+                if (piece === '♙' && row === 0) this.chessBoard[row][col] = '♕';
+                
                 this.chessSelected = null;
                 this.chessPossibleMoves = [];
-                this.updateScore(10);
+                this.chessTurn = 'black';
+                this.updateScore(5);
                 this.drawChess(ctx);
+                
+                // AI делает ход
+                setTimeout(() => this.chessAIMove(ctx), 400);
                 return;
             }
         }
         
-        // Выбираем фигуру
-        if (piece && ((this.chessTurn === 'white' && this.isWhitePiece(piece)) || (this.chessTurn === 'black' && this.isBlackPiece(piece)))) {
+        const piece = this.chessBoard[row][col];
+        if (piece && this.isWhitePiece(piece)) {
             this.chessSelected = { row, col };
             this.chessPossibleMoves = this.getChessMoves(row, col, piece);
         } else {
@@ -2147,108 +2173,472 @@ const game = {
         }
         this.drawChess(ctx);
     },
-
-    getChessMoves(row, col, piece) {
-        const moves = [];
-        const isWhite = this.isWhitePiece(piece);
-        const addIfValid = (r, c) => {
-            if (r >= 0 && r < 8 && c >= 0 && c < 8) {
-                const target = this.chessBoard[r][c];
-                if (!target || (isWhite ? this.isBlackPiece(target) : this.isWhitePiece(target))) {
-                    moves.push({ row: r, col: c });
+    
+    // ===== AI ШАХМАТ =====
+    chessEvaluate() {
+        const values = { '♙': 1, '♘': 3, '♗': 3, '♖': 5, '♕': 9, '♔': 0, '♟': 1, '♞': 3, '♝': 3, '♜': 5, '♛': 9, '♚': 0 };
+        let score = 0;
+        const centerBonus = [[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,1,1,1,1,0,0],[0,0,1,2,2,1,0,0],[0,0,1,2,2,1,0,0],[0,0,1,1,1,1,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]];
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const p = this.chessBoard[r][c];
+                if (p) {
+                    const v = (values[p] || 0) + (centerBonus[r][c] || 0) * 0.3;
+                    score += this.isBlackPiece(p) ? v : -v;
                 }
-            }
-        };
-        
-        const type = piece.toLowerCase();
-        if (type === '♟' || type === '♙') {
-            const dir = isWhite ? -1 : 1;
-            if (!this.chessBoard[row + dir]?.[col]) moves.push({ row: row + dir, col });
-            if ((isWhite && row === 6) || (!isWhite && row === 1)) {
-                if (!this.chessBoard[row + dir]?.[col] && !this.chessBoard[row + dir*2]?.[col]) {
-                    moves.push({ row: row + dir*2, col });
-                }
-            }
-            if (this.chessBoard[row + dir]?.[col - 1] && (isWhite ? this.isBlackPiece(this.chessBoard[row+dir][col-1]) : this.isWhitePiece(this.chessBoard[row+dir][col-1]))) {
-                moves.push({ row: row + dir, col: col - 1 });
-            }
-            if (this.chessBoard[row + dir]?.[col + 1] && (isWhite ? this.isBlackPiece(this.chessBoard[row+dir][col+1]) : this.isWhitePiece(this.chessBoard[row+dir][col+1]))) {
-                moves.push({ row: row + dir, col: col + 1 });
-            }
-        } else if (type === '♜' || type === '♖') {
-            for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-                for (let i = 1; i < 8; i++) {
-                    const r = row + dr*i, c = col + dc*i;
-                    if (r < 0 || r >= 8 || c < 0 || c >= 8) break;
-                    const t = this.chessBoard[r][c];
-                    if (!t) { moves.push({row:r, col:c}); }
-                    else { if (isWhite ? this.isBlackPiece(t) : this.isWhitePiece(t)) moves.push({row:r, col:c}); break; }
-                }
-            }
-        } else if (type === '♞' || type === '♘') {
-            for (const [dr, dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
-                addIfValid(row+dr, col+dc);
-            }
-        } else if (type === '♝' || type === '♗') {
-            for (const [dr, dc] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
-                for (let i = 1; i < 8; i++) {
-                    const r = row + dr*i, c = col + dc*i;
-                    if (r < 0 || r >= 8 || c < 0 || c >= 8) break;
-                    const t = this.chessBoard[r][c];
-                    if (!t) { moves.push({row:r, col:c}); }
-                    else { if (isWhite ? this.isBlackPiece(t) : this.isWhitePiece(t)) moves.push({row:r, col:c}); break; }
-                }
-            }
-        } else if (type === '♛' || type === '♕') {
-            for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
-                for (let i = 1; i < 8; i++) {
-                    const r = row + dr*i, c = col + dc*i;
-                    if (r < 0 || r >= 8 || c < 0 || c >= 8) break;
-                    const t = this.chessBoard[r][c];
-                    if (!t) { moves.push({row:r, col:c}); }
-                    else { if (isWhite ? this.isBlackPiece(t) : this.isWhitePiece(t)) moves.push({row:r, col:c}); break; }
-                }
-            }
-        } else if (type === '♚' || type === '♔') {
-            for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
-                addIfValid(row+dr, col+dc);
             }
         }
-        return moves;
+        return score;
     },
-
+    
+    chessMinimax(depth, isMax, alpha, beta) {
+        if (depth === 0) return this.chessEvaluate();
+        
+        const color = isMax ? 'black' : 'white';
+        let bestVal = isMax ? -Infinity : Infinity;
+        
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const p = this.chessBoard[r][c];
+                if (!p) continue;
+                if ((isMax && !this.isBlackPiece(p)) || (!isMax && !this.isWhitePiece(p))) continue;
+                
+                const moves = this.getChessMoves(r, c, p);
+                for (const m of moves) {
+                    const captured = this.chessBoard[m.row][m.col];
+                    this.chessBoard[m.row][m.col] = p;
+                    this.chessBoard[r][c] = '';
+                    
+                    const val = this.chessMinimax(depth - 1, !isMax, alpha, beta);
+                    
+                    this.chessBoard[r][c] = p;
+                    this.chessBoard[m.row][m.col] = captured;
+                    
+                    if (isMax) { bestVal = Math.max(bestVal, val); alpha = Math.max(alpha, val); }
+                    else { bestVal = Math.min(bestVal, val); beta = Math.min(beta, val); }
+                    if (beta <= alpha) return bestVal;
+                }
+            }
+        }
+        return bestVal;
+    },
+    
+    chessAIMove(ctx) {
+        if (this.chessTurn !== 'black') return;
+        
+        let bestMove = null;
+        let bestVal = -Infinity;
+        const candidates = [];
+        
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const p = this.chessBoard[r][c];
+                if (!p || !this.isBlackPiece(p)) continue;
+                const moves = this.getChessMoves(r, c, p);
+                for (const m of moves) {
+                    const captured = this.chessBoard[m.row][m.col];
+                    this.chessBoard[m.row][m.col] = p;
+                    this.chessBoard[r][c] = '';
+                    
+                    const val = this.chessMinimax(this.chessAIDepth, false, -Infinity, Infinity);
+                    
+                    this.chessBoard[r][c] = p;
+                    this.chessBoard[m.row][m.col] = captured;
+                    
+                    if (this.chessDifficulty === 'easy') {
+                        candidates.push({ fromR: r, fromC: c, toR: m.row, toC: m.col, val: val + Math.random() * 0.5 });
+                    } else {
+                        if (val > bestVal) { bestVal = val; bestMove = { fromR: r, fromC: c, toR: m.row, toC: m.col }; }
+                    }
+                }
+            }
+        }
+        
+        if (this.chessDifficulty === 'easy' && candidates.length > 0) {
+            candidates.sort((a, b) => b.val - a.val);
+            bestMove = candidates[0];
+        }
+        
+        if (!bestMove) {
+            this.chessTurn = 'white';
+            return;
+        }
+        
+        const piece = this.chessBoard[bestMove.fromR][bestMove.fromC];
+        this.chessBoard[bestMove.toR][bestMove.toC] = piece;
+        this.chessBoard[bestMove.fromR][bestMove.fromC] = '';
+        
+        // Превращение пешки
+        if (piece === '♟' && bestMove.toR === 7) this.chessBoard[bestMove.toR][bestMove.toC] = '♛';
+        
+        this.chessTurn = 'white';
+        this.updateScore(5);
+        this.drawChess(ctx);
+    },
+    
     drawChess(ctx) {
         const size = 60;
+        // Доска
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const x = col * size;
                 const y = row * size;
                 
-                ctx.fillStyle = (row + col) % 2 === 0 ? '#f0d9b5' : '#b58863';
-                
-                // Подсветка выбранной
+                // Цвет клетки
                 if (this.chessSelected && this.chessSelected.row === row && this.chessSelected.col === col) {
                     ctx.fillStyle = '#8297d9';
+                } else if (this.chessPossibleMoves.some(m => m.row === row && m.col === col)) {
+                    const piece = this.chessBoard[row][col];
+                    ctx.fillStyle = piece ? 'rgba(231,76,60,0.5)' : 'rgba(130,200,100,0.6)';
+                } else {
+                    ctx.fillStyle = (row + col) % 2 === 0 ? '#f0d9b5' : '#b58863';
                 }
-                
-                // Подсветка возможных ходов
-                if (this.chessPossibleMoves.some(m => m.row === row && m.col === col)) {
-                    ctx.fillStyle = 'rgba(130, 200, 100, 0.6)';
-                }
-                
                 ctx.fillRect(x, y, size, size);
                 
+                // Рисуем фигуру
                 const piece = this.chessBoard[row][col];
                 if (piece) {
-                    ctx.font = '36px serif';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(piece, x + size/2, y + size/2);
+                    const isW = this.isWhitePiece(piece);
+                    this.drawCatPiece(ctx, x + size/2, y + size/2, size * 0.42, piece, isW);
                 }
             }
         }
+        
+        // Статус
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 13px Arial';
+        ctx.textAlign = 'left';
+        const turn = this.chessTurn === 'white' ? 'Ваш ход ⬜' : 'Думает AI... ⬛';
+        ctx.fillText(turn, 5, 475);
     },
-
+    
+    // ===== РИСОВАНИЕ КОШАЧЬИХ ФИГУР =====
+    drawCatPiece(ctx, cx, cy, size, piece, isWhite) {
+        const c = isWhite ? this.chessColors.white : this.chessColors.black;
+        const s = size;
+        ctx.save();
+        
+        // Определяем тип фигуры
+        const type = this.chessPieceType(piece);
+        
+        // Базовая платформа
+        ctx.fillStyle = c.dark;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + s*0.45, s*0.5, s*0.12, 0, 0, Math.PI*2);
+        ctx.fill();
+        
+        if (type === 'pawn') {
+            // Пешка — маленький кот
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.arc(cx, cy - s*0.05, s*0.3, 0, Math.PI*2);
+            ctx.fill();
+            // Мордочка
+            ctx.fillStyle = c.light;
+            ctx.beginPath();
+            ctx.arc(cx, cy + s*0.0, s*0.2, 0, Math.PI*2);
+            ctx.fill();
+            // Уши
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.moveTo(cx - s*0.22, cy - s*0.22);
+            ctx.lineTo(cx - s*0.12, cy - s*0.42);
+            ctx.lineTo(cx - s*0.02, cy - s*0.18);
+            ctx.closePath();
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx + s*0.22, cy - s*0.22);
+            ctx.lineTo(cx + s*0.12, cy - s*0.42);
+            ctx.lineTo(cx + s*0.02, cy - s*0.18);
+            ctx.closePath();
+            ctx.fill();
+            // Глазки
+            ctx.fillStyle = c.eyes;
+            ctx.beginPath(); ctx.arc(cx - s*0.1, cy - s*0.05, s*0.05, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx + s*0.1, cy - s*0.05, s*0.05, 0, Math.PI*2); ctx.fill();
+            // Нос
+            ctx.fillStyle = isWhite ? '#dda0dd' : '#8a6a8a';
+            ctx.beginPath(); ctx.arc(cx, cy + s*0.05, s*0.03, 0, Math.PI*2); ctx.fill();
+            // Сердечко
+            ctx.fillStyle = isWhite ? '#e8b0e8' : '#6a4a6a';
+            ctx.font = `${s*0.2}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('♥', cx, cy + s*0.25);
+            
+        } else if (type === 'rook') {
+            // Ладья — башня с кошачьими ушами
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.roundRect(cx - s*0.25, cy - s*0.35, s*0.5, s*0.65, [s*0.08, s*0.08, 0, 0]);
+            ctx.fill();
+            // Зубцы
+            ctx.fillStyle = c.dark;
+            for (let i = -1; i <= 1; i++) {
+                ctx.fillRect(cx + i*s*0.16 - s*0.06, cy - s*0.48, s*0.12, s*0.15);
+            }
+            // Уши на зубцах
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.moveTo(cx - s*0.2, cy - s*0.42);
+            ctx.lineTo(cx - s*0.12, cy - s*0.55);
+            ctx.lineTo(cx - s*0.04, cy - s*0.42);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx + s*0.04, cy - s*0.42);
+            ctx.lineTo(cx + s*0.12, cy - s*0.55);
+            ctx.lineTo(cx + s*0.2, cy - s*0.42);
+            ctx.closePath(); ctx.fill();
+            // Окно
+            ctx.fillStyle = c.light;
+            ctx.beginPath();
+            ctx.arc(cx, cy - s*0.1, s*0.1, 0, Math.PI*2);
+            ctx.fill();
+            // Лапка
+            ctx.fillStyle = isWhite ? '#e8d0f8' : '#4a3a5a';
+            ctx.font = `${s*0.18}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🐾', cx, cy + s*0.18);
+            
+        } else if (type === 'knight') {
+            // Конь — кошачья голова с гривой
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy - s*0.05, s*0.28, s*0.35, 0, 0, Math.PI*2);
+            ctx.fill();
+            // Грива
+            ctx.fillStyle = c.dark;
+            ctx.beginPath();
+            ctx.ellipse(cx - s*0.22, cy - s*0.15, s*0.12, s*0.25, -0.3, 0, Math.PI*2);
+            ctx.fill();
+            // Уши
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.moveTo(cx - s*0.15, cy - s*0.32);
+            ctx.lineTo(cx - s*0.08, cy - s*0.52);
+            ctx.lineTo(cx + s*0.0, cy - s*0.3);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx + s*0.1, cy - s*0.35);
+            ctx.lineTo(cx + s*0.2, cy - s*0.5);
+            ctx.lineTo(cx + s*0.25, cy - s*0.3);
+            ctx.closePath(); ctx.fill();
+            // Мордочка
+            ctx.fillStyle = c.light;
+            ctx.beginPath();
+            ctx.ellipse(cx + s*0.05, cy, s*0.18, s*0.2, 0.1, 0, Math.PI*2);
+            ctx.fill();
+            // Глаз
+            ctx.fillStyle = c.eyes;
+            ctx.beginPath(); ctx.arc(cx + s*0.0, cy - s*0.1, s*0.06, 0, Math.PI*2); ctx.fill();
+            // Нос
+            ctx.fillStyle = isWhite ? '#dda0dd' : '#8a6a8a';
+            ctx.beginPath(); ctx.arc(cx + s*0.1, cy + s*0.0, s*0.035, 0, Math.PI*2); ctx.fill();
+            
+        } else if (type === 'bishop') {
+            // Слон — высокий кот с митрой
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.roundRect(cx - s*0.2, cy - s*0.2, s*0.4, s*0.5, s*0.1);
+            ctx.fill();
+            // Митра
+            ctx.fillStyle = c.dark;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - s*0.5);
+            ctx.lineTo(cx - s*0.18, cy - s*0.25);
+            ctx.lineTo(cx + s*0.18, cy - s*0.25);
+            ctx.closePath(); ctx.fill();
+            // Крест на митре
+            ctx.strokeStyle = isWhite ? '#fff' : '#ccc';
+            ctx.lineWidth = s*0.04;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - s*0.55);
+            ctx.lineTo(cx, cy - s*0.42);
+            ctx.moveTo(cx - s*0.06, cy - s*0.48);
+            ctx.lineTo(cx + s*0.06, cy - s*0.48);
+            ctx.stroke();
+            // Уши под митрой
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.moveTo(cx - s*0.2, cy - s*0.22);
+            ctx.lineTo(cx - s*0.1, cy - s*0.38);
+            ctx.lineTo(cx, cy - s*0.22);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - s*0.22);
+            ctx.lineTo(cx + s*0.1, cy - s*0.38);
+            ctx.lineTo(cx + s*0.2, cy - s*0.22);
+            ctx.closePath(); ctx.fill();
+            // Глазки
+            ctx.fillStyle = c.eyes;
+            ctx.beginPath(); ctx.arc(cx - s*0.07, cy - s*0.08, s*0.05, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx + s*0.07, cy - s*0.08, s*0.05, 0, Math.PI*2); ctx.fill();
+            // Лапка
+            ctx.fillStyle = isWhite ? '#e8d0f8' : '#4a3a5a';
+            ctx.font = `${s*0.16}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.fillText('🐾', cx, cy + s*0.15);
+            
+        } else if (type === 'queen') {
+            // Ферзь — королева с короной
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + s*0.05, s*0.25, s*0.3, 0, 0, Math.PI*2);
+            ctx.fill();
+            // Корона
+            ctx.fillStyle = isWhite ? '#ffd700' : '#daa520';
+            ctx.beginPath();
+            ctx.moveTo(cx - s*0.22, cy - s*0.2);
+            ctx.lineTo(cx - s*0.18, cy - s*0.38);
+            ctx.lineTo(cx - s*0.08, cy - s*0.25);
+            ctx.lineTo(cx, cy - s*0.42);
+            ctx.lineTo(cx + s*0.08, cy - s*0.25);
+            ctx.lineTo(cx + s*0.18, cy - s*0.38);
+            ctx.lineTo(cx + s*0.22, cy - s*0.2);
+            ctx.closePath(); ctx.fill();
+            // Уши
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.moveTo(cx - s*0.18, cy - s*0.2);
+            ctx.lineTo(cx - s*0.1, cy - s*0.35);
+            ctx.lineTo(cx - s*0.02, cy - s*0.18);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx + s*0.02, cy - s*0.18);
+            ctx.lineTo(cx + s*0.1, cy - s*0.35);
+            ctx.lineTo(cx + s*0.18, cy - s*0.2);
+            ctx.closePath(); ctx.fill();
+            // Мордочка
+            ctx.fillStyle = c.light;
+            ctx.beginPath();
+            ctx.arc(cx, cy + s*0.05, s*0.18, 0, Math.PI*2);
+            ctx.fill();
+            // Глаза
+            ctx.fillStyle = c.eyes;
+            ctx.beginPath(); ctx.arc(cx - s*0.08, cy - s*0.0, s*0.05, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx + s*0.08, cy - s*0.0, s*0.05, 0, Math.PI*2); ctx.fill();
+            // Нос
+            ctx.fillStyle = isWhite ? '#dda0dd' : '#8a6a8a';
+            ctx.beginPath(); ctx.arc(cx, cy + s*0.1, s*0.03, 0, Math.PI*2); ctx.fill();
+            // Колокольчик
+            ctx.fillStyle = isWhite ? '#ffd700' : '#b8860b';
+            ctx.beginPath(); ctx.arc(cx, cy + s*0.25, s*0.06, 0, Math.PI*2); ctx.fill();
+            
+        } else if (type === 'king') {
+            // Король — кот с крестом
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + s*0.05, s*0.25, s*0.3, 0, 0, Math.PI*2);
+            ctx.fill();
+            // Крест
+            ctx.strokeStyle = isWhite ? '#ffd700' : '#daa520';
+            ctx.lineWidth = s*0.07;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - s*0.3);
+            ctx.lineTo(cx, cy - s*0.5);
+            ctx.moveTo(cx - s*0.08, cy - s*0.4);
+            ctx.lineTo(cx + s*0.08, cy - s*0.4);
+            ctx.stroke();
+            // Уши
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.moveTo(cx - s*0.18, cy - s*0.2);
+            ctx.lineTo(cx - s*0.1, cy - s*0.38);
+            ctx.lineTo(cx - s*0.02, cy - s*0.18);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx + s*0.02, cy - s*0.18);
+            ctx.lineTo(cx + s*0.1, cy - s*0.38);
+            ctx.lineTo(cx + s*0.18, cy - s*0.2);
+            ctx.closePath(); ctx.fill();
+            // Мордочка
+            ctx.fillStyle = c.light;
+            ctx.beginPath();
+            ctx.arc(cx, cy + s*0.05, s*0.18, 0, Math.PI*2);
+            ctx.fill();
+            // Глаза
+            ctx.fillStyle = c.eyes;
+            ctx.beginPath(); ctx.arc(cx - s*0.08, cy - s*0.0, s*0.05, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx + s*0.08, cy - s*0.0, s*0.05, 0, Math.PI*2); ctx.fill();
+            // Нос
+            ctx.fillStyle = isWhite ? '#dda0dd' : '#8a6a8a';
+            ctx.beginPath(); ctx.arc(cx, cy + s*0.1, s*0.03, 0, Math.PI*2); ctx.fill();
+            // Колокольчик
+            ctx.fillStyle = isWhite ? '#ffd700' : '#b8860b';
+            ctx.beginPath(); ctx.arc(cx, cy + s*0.25, s*0.06, 0, Math.PI*2); ctx.fill();
+        }
+        
+        ctx.restore();
+    },
+    
+    chessPieceType(piece) {
+        if ('♟♙'.includes(piece)) return 'pawn';
+        if ('♜♖'.includes(piece)) return 'rook';
+        if ('♞♘'.includes(piece)) return 'knight';
+        if ('♝♗'.includes(piece)) return 'bishop';
+        if ('♛♕'.includes(piece)) return 'queen';
+        if ('♚♔'.includes(piece)) return 'king';
+        return 'pawn';
+    },
+    
+    getChessMoves(row, col, piece) {
+        const moves = [];
+        const board = this.chessBoard;
+        const isWhite = this.isWhitePiece(piece);
+        const isBlack = this.isBlackPiece(piece);
+        
+        const addIfValid = (r, c) => {
+            if (r < 0 || r > 7 || c < 0 || c > 7) return false;
+            const target = board[r][c];
+            if (target && (isWhite ? this.isWhitePiece(target) : this.isBlackPiece(target))) return false;
+            moves.push({ row: r, col: c });
+            return !target;
+        };
+        
+        const addSliding = (dr, dc) => {
+            for (let i = 1; i < 8; i++) {
+                if (!addIfValid(row + dr*i, col + dc*i)) break;
+            }
+        };
+        
+        const type = piece.toLowerCase();
+        const dir = isWhite ? -1 : 1;
+        
+        if (type === '♟' || type === '♙') {
+            if (!board[row + dir]?.[col]) {
+                moves.push({ row: row + dir, col });
+                if ((isWhite && row === 6) || (isBlack && row === 1)) {
+                    if (!board[row + dir*2]?.[col]) moves.push({ row: row + dir*2, col });
+                }
+            }
+            for (const dc of [-1, 1]) {
+                const tr = row + dir, tc = col + dc;
+                if (tr >= 0 && tr < 8 && tc >= 0 && tc < 8 && board[tr][tc]) {
+                    const t = board[tr][tc];
+                    if (isWhite && this.isBlackPiece(t)) moves.push({ row: tr, col: tc });
+                    if (isBlack && this.isWhitePiece(t)) moves.push({ row: tr, col: tc });
+                }
+            }
+        } else if (type === '♜') {
+            addSliding(1, 0); addSliding(-1, 0); addSliding(0, 1); addSliding(0, -1);
+        } else if (type === '♞') {
+            const jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+            jumps.forEach(([dr,dc]) => addIfValid(row+dr, col+dc));
+        } else if (type === '♝') {
+            addSliding(1,1); addSliding(1,-1); addSliding(-1,1); addSliding(-1,-1);
+        } else if (type === '♛') {
+            addSliding(1,0); addSliding(-1,0); addSliding(0,1); addSliding(0,-1);
+            addSliding(1,1); addSliding(1,-1); addSliding(-1,1); addSliding(-1,-1);
+        } else if (type === '♚') {
+            [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr,dc]) => addIfValid(row+dr, col+dc));
+        }
+        
+        return moves;
+    },
+    
+    // ===== ШАХМАТЫ КОНЕЦ =====
     // ===== NONSTOP BALLS =====
     nonstopBalls: [],
     nonstopBlocks: [],
