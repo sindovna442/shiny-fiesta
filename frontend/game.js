@@ -3571,6 +3571,7 @@ class HellfireBallsGame {
             this.balls.push({
                 x: this.cannonX, y: this.cannonY - 18,
                 vx: Math.cos(a) * 360, vy: Math.sin(a) * 360,
+                _hitBlockIdx: -1,
                 active: true,
                 bombArmed: this.armedBomb,
                 trail: []
@@ -3614,7 +3615,9 @@ class HellfireBallsGame {
                 const dx = Math.abs(ball.x - b.x);
                 const dy = Math.abs(ball.y - b.y);
                 if (dx <= b.w / 2 + 6 && dy <= b.h / 2 + 6) {
-                    this._handleHit(ball, b, i);
+                    if (ball._hitBlockIdx !== i) {
+                        this._handleHit(ball, b, i);
+                    }
                     break;     // ball is consumed (or bombs 3x3)
                 }
             }
@@ -3647,6 +3650,7 @@ class HellfireBallsGame {
     }
 
     _handleHit(ball, block, idx) {
+        ball._hitBlockIdx = idx;
         block.hp -= 1;
         this._spawnHitParticles(block.x, block.y, block.hp, block.type);
         HellfireBallsGame.playBlockHit(this.parent.audioCtx);
@@ -3675,7 +3679,6 @@ class HellfireBallsGame {
             this.shakeFor(0.4, 18);
         }
 
-        ball.active = false;
     }
 
     _explode3x3(cx, cy) {
@@ -3758,6 +3761,7 @@ class HellfireBallsGame {
 
         this.ballCount = Math.min(12, this.ballsInReserve);
         this.destroyedThisTurn = 0;
+        this.balls = [];
         this.state = 'AIMING';
         this.updateHUD();
     }
