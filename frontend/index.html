@@ -194,15 +194,48 @@
                     <div class="minigame-name">Судоку</div>
                     <div class="minigame-desc">Логическая головоломка</div>
                 </div>
-                <div class="minigame-card" onclick="game.startMinigame('nonstop')">
-                    <div class="minigame-icon">🎯</div>
-                    <div class="minigame-name">Nonstop Balls</div>
-                    <div class="minigame-desc">Шары vs Блоки</div>
+                <div class="minigame-card" onclick="game.startMinigame('hellfire')">
+                    <div class="minigame-icon">🔥</div>
+                    <div class="minigame-name">HELLFIRE BALLS</div>
+                    <div class="minigame-desc">Фаерболлы против адских блоков</div>
                 </div>
             </div>
         </div>
 
-        <!-- Экран мини-игры (подключается динамически) -->
+        <!-- 🔥 HELLFIRE BALLS — адская арена (полный экран) -->
+<div id="hellfireScreen" class="hellfire-screen" style="display:none;">
+    <div class="hellfire-stage">
+        <canvas id="hellfireCanvas" class="hellfire-canvas"></canvas>
+        <div class="hellfire-hud">
+            <div class="left">
+                <span>🔥 <span class="big-num" id="hellfireScore">0</span></span>
+                &nbsp;·&nbsp;
+                <span>🏆 <span class="big-num" id="hellfireHigh">0</span></span>
+                &nbsp;·&nbsp;
+                <span>WAVE <span class="big-num" id="hellfireWave">1</span></span>
+            </div>
+            <div class="right">
+                <span class="ammo" id="hellfireAmmo">⚔ 1</span>
+                &nbsp;·&nbsp;
+                <span class="bomb" id="hellfireBomb">💣 —</span>
+            </div>
+        </div>
+        <div class="hellfire-combo" id="hellfireCombo"></div>
+        <div class="hellfire-gameover" id="hellfireGameover">
+            <h1>HELLFIRE BALLS</h1>
+            <div style="font-size:22px; color:#ff8060; letter-spacing:6px; margin-top:-8px;">— GAME OVER —</div>
+            <div class="score-final">Очки: <span class="num" id="hellfireFinalScore">0</span></div>
+            <div class="best" id="hellfireBestLine"></div>
+            <button class="hellfire-btn" id="hellfireRestart" style="margin-top:18px;">🔥 ВОЗРОДИТЬСЯ</button>
+        </div>
+    </div>
+    <div class="hellfire-controls">
+        <button class="hellfire-btn" id="hellfireClose">✕ В МЕНЮ</button>
+        <button class="hellfire-btn fire" id="hellfireFire">🔥 ВЫСТРЕЛ</button>
+    </div>
+</div>
+
+<!-- Экран мини-игры (подключается динамически) -->
         <div id="gameScreen" class="screen">
             <div class="game-header">
                 <button class="back-btn" onclick="game.exitMinigame()">← Назад</button>
