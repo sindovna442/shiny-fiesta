@@ -1,6 +1,7 @@
+from persistence import save_state, load_state
+
 from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
-import json
 from datetime import datetime, timedelta
 import uuid
 import os
@@ -11,6 +12,8 @@ CORS(app)
 # In-memory storage (in production, use a database)
 pets_data = {}
 user_sketches = {}
+
+load_state(pets_data, user_sketches, DemonCat)
 
 # Pet Constants
 PET_STATES = {
@@ -235,6 +238,7 @@ def get_pet(pet_id):
     pet = pets_data[pet_id]
     pet.decay_stats()  # Обновить показатели
     
+    save_state(pets_data, user_sketches)
     return jsonify(pet.to_dict())
 
 

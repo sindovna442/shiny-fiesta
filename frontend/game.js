@@ -14,12 +14,19 @@ const game = {
     hoveredItem: null,
     dragState: { active: false, type: null, index: -1, offsetX: 0, offsetY: 0, startX: 0, startY: 0 },
     particles: [],
+
+    // rAF-animation loop for pet canvas (gated to mainScreen)
+    _petAnimFrame: null,
+    _petAnimLoopRunning: false,
+    _mainScreenActive: false,
     
     // Система звука
     audioCtx: null,
     
     // Система реакций кота
     catReaction: null,
+    settleDropStart: 0,
+    settleDropKind: null,
     reactionEndTime: 0,
     rooms: [
         { id: 0, name: '🏠 Гостиная', color: '#1a1a2e', petX: 0.5, petY: 0.55 },
@@ -34,24 +41,30 @@ const game = {
     // Инициализация игры
     async init() {
         console.log('Initializing game...');
-        
-        // Создаём или загружаем питомца
-        await this.createNewPet();
-        
-        // Инициализируем редактор рисования
+
+        // Try to reuse the saved petId from localStorage first.
+        const reused = await this.tryReuseExistingPet();
+        if (!reused) {
+            await this.createNewPet();
+        }
+
+        // Drawing editor
         this.editor = new DrawingEditor();
-        
-        // Инициализируем обработчики Canvas
+
+        // Canvas event handlers
         this.setupCanvasEvents();
-        
-        // Инициализируем AudioContext
+
+        // AudioContext
         this.initAudio();
-        
-        // Обновляем состояние каждые 2 секунды
+
+        // 2-second stats tick
         this.startGameLoop();
-        
-        // Обновляем UI
+
+        // Update UI
         this.updateUI();
+
+        // Pet animation rAF loop (gated to mainScreen)
+        this.startPetAnimLoop();
     },
 
     // Инициализация аудио
@@ -378,7 +391,7 @@ const game = {
                 if (item.action !== 'toggleBath' && item.action !== 'toggleBed') {
                     this.spawnParticles(item.type, itemX, itemY);
                 }
-                this[item.action]();
+                this.movePetToItem(item);
                 return;
             }
         }
@@ -559,11 +572,14 @@ const game = {
                     name: 'Демонический Кот'
                 })
             });
-            
+
             const data = await response.json();
             this.petId = data.pet_id;
             this.pet = data.pet;
-            
+
+            // Save petId to localStorage so the same pet persists across reloads
+            try { localStorage.setItem('demonCatPetId', this.petId); } catch (e) {}
+
             console.log('Pet created:', this.petId);
         } catch (error) {
             console.error('Error creating pet:', error);
@@ -640,6 +656,8 @@ const game = {
             
             if (this.pet.in_bath) {
                 this.addNotification('Кот залез в ванну! 🛁', 'wash');
+            this.settleDropStart = performance.now();
+            this.settleDropKind = 'bath';
             } else {
                 this.addNotification('Кот вылез из ванны! Чистота +30 🧼', 'wash');
                 this.spawnParticles('bathtub', 0, 0);
@@ -661,6 +679,8 @@ const game = {
             
             if (this.pet.in_bed) {
                 this.addNotification('Кот лёг спать... Zzz 💤', 'sleep');
+            this.settleDropStart = performance.now();
+            this.settleDropKind = 'bed';
             } else {
                 this.addNotification('Кот проснулся! Энергия +20 ⚡', 'sleep');
                 this.spawnParticles('bed', 0, 0);
@@ -717,8 +737,65 @@ const game = {
     },
 
     // Перерисовка при смене комнаты (без setInterval, по запросу)
+    // ==== Settle-drop animation (cat visibly drops into bath/bed) ====
+    // Returns a single Y-offset to add when drawing the cat, while
+    // settleDropKind is set. Eases out from DROP_PX -> 0 over 200ms.
+    getSettleDropOffset() {
+        if (!this.settleDropKind) return 0;
+        const DROP_PX = 90;     // how far above its slot the cat starts
+        const DUR_MS = 200;     // length of the drop
+        const elapsed = performance.now() - this.settleDropStart;
+        if (elapsed >= DUR_MS) {
+            this.settleDropKind = null;   // one-shot cleanup
+            return 0;
+        }
+        const t = Math.min(1, elapsed / DUR_MS);
+        const eased = 1 - Math.pow(1 - t, 2);   // quadratic ease-out
+        return DROP_PX * (1 - eased);          // start at +DROP_PX, end at 0
+    },
+
+    // Перерисовка при смене комнаты (без setInterval, по запросу)
     redrawPetNow() {
         this.drawPet();
+    },
+    // ===== rAF animation loop for pet canvas =====
+    petAnimLoop() {
+        if (!this._petAnimLoopRunning) return; // safety
+        this.drawPet();
+        this._petAnimFrame = requestAnimationFrame(() => this.petAnimLoop());
+    },
+    startPetAnimLoop() {
+        if (this._petAnimLoopRunning) return; // idempotent
+        this._petAnimLoopRunning = true;
+        this._mainScreenActive = true;
+        this.petAnimLoop();
+    },
+    stopPetAnimLoop() {
+        this._petAnimLoopRunning = false;
+        this._mainScreenActive = false;
+        if (this._petAnimFrame) {
+            cancelAnimationFrame(this._petAnimFrame);
+            this._petAnimFrame = null;
+        }
+    },
+
+    // ===== localStorage petId reuse =====
+    async tryReuseExistingPet() {
+        let stored = null;
+        try { stored = localStorage.getItem('demonCatPetId'); } catch (e) { return false; }
+        if (!stored) return false;
+        try {
+            const resp = await fetch(`${API_BASE}/pet/${stored}`);
+            if (!resp.ok) return false;
+            const pet = await resp.json();
+            if (pet && pet.pet_id) {
+                this.petId = pet.pet_id;
+                this.pet = pet;
+                console.log("Pet reused:", this.petId);
+                return true;
+            }
+        } catch (e) {}
+        return false;
     },
 
     // Только обновить курсор при hover без полной перерисовки
@@ -793,6 +870,35 @@ const game = {
         this.drawPet();
     },
 
+    movePetToItem(item) {
+        const room = this.rooms[this.currentRoom];
+        const offsets = {
+            foodBowl: [-0.10, -0.05],
+            bathtub:  [-0.08, -0.05],
+            bed:      [-0.10,  0.05]
+        };
+        const [dx, dy] = offsets[item.type] || [-0.10, -0.05];
+        const tx = Math.max(0.08, Math.min(0.92, item.x + dx));
+        const ty = Math.max(0.12, Math.min(0.88, item.y + dy));
+        const dur = 400;
+        const t0 = performance.now();
+        const startX = room.petX;
+        const startY = room.petY;
+        const self = this;
+        const step = () => {
+            const t = Math.min(1, (performance.now() - t0) / dur);
+            room.petX = startX + (tx - startX) * t;
+            room.petY = startY + (ty - startY) * t;
+            if (t < 1 && self._mainScreenActive) {
+                requestAnimationFrame(step);
+            } else {
+                self.spawnParticles(item.type, 0, 0);
+                self[item.action]();
+            }
+        };
+        requestAnimationFrame(step);
+    },
+
     // Рисование питомца на Canvas
     drawPet() {
         const canvas = document.getElementById('petCanvas');
@@ -812,6 +918,16 @@ const game = {
         const petX = canvas.width * room.petX;
         const petY = canvas.height * room.petY;
         this.drawDemonCat(ctx, petX, petY);
+
+        // Когда предмет перетаскивают — перерисовываем его ПОВЕРХ кота,
+        // чтобы еда/ванна/кровать визуально были впереди во время drag.
+        if (this.dragState && this.dragState.active && this.dragState.type === 'item') {
+            const prevHover = this.hoveredItem;
+            this.hoveredItem = null;
+            this.drawRoomElements(ctx, canvas.width, canvas.height);
+            this.hoveredItem = prevHover;
+        }
+
         
         // Рисуем частицы поверх всего
         this.updateAndDrawParticles(ctx);
@@ -1040,13 +1156,13 @@ const game = {
         const reactionProgress = reaction ? (now - (this.reactionEndTime - 1500)) / 1500 : 0;
         
         // ===== СПЕЦИАЛЬНЫЕ АНИМАЦИИ =====
+        // Оседание: при входе в ванну/кровать виртуально поднимаем кота,
+        // затем за 200 ms ease-out опускаем обратно — выглядит «упал в ванну/кровать».
+        const dropOffset = (this.pet && (this.pet.in_bath || this.pet.in_bed))
+            ? this.getSettleDropOffset() : 0;
         // Если кот в ванне — рисуем только голову + пузырьки
         if (this.pet && this.pet.in_bath) {
-            return this.drawCatInBath(ctx, x, y, scale, now, reaction);
-        }
-        // Если кот в кровати — спящая поза
-        if (this.pet && this.pet.in_bed) {
-            return this.drawCatInBed(ctx, x, y, scale, now, reaction);
+            return this.drawCatInBath(ctx, x, y + dropOffset, scale, now, reaction);
         }
         
         // ===== СЛОЙ 1 (ЗАДНИЙ): Хвост + Нижние лапы =====
@@ -1392,6 +1508,38 @@ const game = {
         // Голова — круг
         ctx.fillStyle = '#e74c3c';
         ctx.beginPath();
+        // === КОШАЧЬИ ЧАСТИ В ВАННЕ (торс выглядывает над водой + лапы держат бортик) ===
+        // Торсовая часть (верхняя половина тела видна над уровнем воды)
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(x, y + 8 * scale, 56 * scale, 18 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Животик (светло-розовый, между торсом и бортиком)
+        ctx.fillStyle = '#ff9999';
+        ctx.beginPath();
+        ctx.ellipse(x, y + 12 * scale, 40 * scale, 10 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Передние лапы на бортике ванны (клешни симметрично)
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.ellipse(x - 50 * scale, y - 18 * scale, 14 * scale, 22 * scale, -0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(x + 50 * scale, y - 18 * scale, 14 * scale, 22 * scale, 0.25, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Пальчики на передних лапах
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.ellipse(x - 56 * scale + i * 6 * scale, y - 38 * scale, 4 * scale, 6 * scale, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 44 * scale + i * 6 * scale, y - 38 * scale, 4 * scale, 6 * scale, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
         ctx.arc(x, y - 55 * scale + breath, 55 * scale, 0, Math.PI * 2);
         ctx.fill();
         
@@ -1741,9 +1889,6 @@ const game = {
             ctx.shadowBlur = 0;
             
             // Рамка
-            ctx.strokeStyle = '#ddd';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
         };
         img.src = page.imageData;
         
@@ -2846,6 +2991,10 @@ const game = {
 
     // Переключение экрана
     switchScreen(screenId) {
+        // Pet animation rAF loop only runs while mainScreen is active
+        if (screenId === 'mainScreen') this.startPetAnimLoop();
+        else this.stopPetAnimLoop();
+
         document.querySelectorAll('.screen').forEach(screen => {
             screen.classList.remove('active');
         });
