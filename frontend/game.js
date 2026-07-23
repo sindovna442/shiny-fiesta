@@ -33,6 +33,7 @@ const game = {
     
     // Система звука
     audioCtx: null,
+    _muted: false, // mute toggle for all sounds
     
     // Система реакций кота
     catReaction: null,
@@ -67,6 +68,14 @@ const game = {
 
         // AudioContext
         this.initAudio();
+        
+        // Restore mute state from localStorage
+        try { this._muted = localStorage.getItem('demonCatMuted') === '1'; } catch (e) {}
+        const muteBtn = document.getElementById('muteBtn');
+        if (muteBtn) {
+            muteBtn.textContent = this._muted ? '🔇' : '🔊';
+            muteBtn.title = this._muted ? 'Включить звук' : 'Выключить звук';
+        }
 
         // 2-second stats tick
         this.startGameLoop();
@@ -116,7 +125,7 @@ const game = {
 
     // Генерация звука лопанья пузырька (мягкий)
     playMeow() {
-        if (!this.audioCtx) return;
+        if (this._muted || !this.audioCtx) return;
         if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
         const now = this.audioCtx.currentTime;
         // Основной «хлопок» — резкий спад частоты
@@ -147,7 +156,7 @@ const game = {
 
     // Звук серии лопающихся пузырьков (много маленьких)
     playPurr() {
-        if (!this.audioCtx) return;
+        if (this._muted || !this.audioCtx) return;
         if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
         const now = this.audioCtx.currentTime;
         // 6-8 крошечных пузырьков в быстрой последовательности
@@ -170,7 +179,7 @@ const game = {
 
     // Звук громкого лопанья большого пузыря
     playAngryMeow() {
-        if (!this.audioCtx) return;
+        if (this._muted || !this.audioCtx) return;
         if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
         const now = this.audioCtx.currentTime;
         // Большой пузырь — глубокий хлопок
@@ -201,6 +210,17 @@ const game = {
             o.start(t);
             o.stop(t + 0.07);
         }
+    },
+
+    // Переключить mute всех звуков
+    toggleMute() {
+        this._muted = !this._muted;
+        const btn = document.getElementById('muteBtn');
+        if (btn) {
+            btn.textContent = this._muted ? '🔇' : '🔊';
+            btn.title = this._muted ? 'Включить звук' : 'Выключить звук';
+        }
+        try { localStorage.setItem('demonCatMuted', this._muted ? '1' : '0'); } catch (e) {}
     },
 
     // Получить случайную реакцию
@@ -594,6 +614,7 @@ const game = {
 
             // Save petId to localStorage so the same pet persists across reloads
             try { localStorage.setItem('demonCatPetId', this.petId); } catch (e) {}
+            this.savePetLocally();
 
             console.log('Pet created:', this.petId);
         } catch (error) {
@@ -633,6 +654,7 @@ const game = {
                     });
                     const eatData = await eatResponse.json();
                     this.pet = eatData.pet;
+                    this.savePetLocally();
                     this.addNotification('Кот съел всю еду! 😋', 'feed');
                     this.spawnParticles('foodBowl', 0, 0);
                     this.updateUI();
@@ -653,6 +675,7 @@ const game = {
             });
             const data = await response.json();
             this.pet = data.pet;
+            this.savePetLocally();
             this.addNotification('Кот мурчит (но делает вид что ему не нравится) 😼', 'pet');
             this.updateUI();
         } catch (error) {
@@ -704,6 +727,30 @@ const game = {
         } catch (error) {
             console.error('Error toggling bed:', error);
         }
+    },
+
+    // Сохранить питомца в localStorage (автосохранение)
+    savePetLocally() {
+        if (!this.pet) return;
+        try {
+            localStorage.setItem('demonCatPetData', JSON.stringify(this.pet));
+        } catch (e) {}
+    },
+
+    // Восстановить питомца из localStorage (если API недоступен)
+    loadPetLocally() {
+        try {
+            const data = localStorage.getItem('demonCatPetData');
+            if (data) {
+                const pet = JSON.parse(data);
+                if (pet && pet.pet_id) {
+                    this.pet = pet;
+                    this.petId = pet.pet_id;
+                    return true;
+                }
+            }
+        } catch (e) {}
+        return false;
     },
 
     // Сбросить игру — завести нового питомца
@@ -6093,6 +6140,7 @@ class ChefGame {
 
     // Sizzle: pizza baking sound (hissing/steam)
     playSizzle() {
+        if (game._muted) return;
         const ctx = this._audioCtx();
         if (!ctx) return;
         const now = ctx.currentTime;
@@ -6119,6 +6167,7 @@ class ChefGame {
 
     // Chomp: chewing sound when a piece is eaten
     playChomp() {
+        if (game._muted) return;
         const ctx = this._audioCtx();
         if (!ctx) return;
         const now = ctx.currentTime;
@@ -6153,6 +6202,7 @@ class ChefGame {
 
     // Happy squeak: high-pitched delighted sound at 100% satiety
     playHappySqueak() {
+        if (game._muted) return;
         const ctx = this._audioCtx();
         if (!ctx) return;
         const now = ctx.currentTime;
