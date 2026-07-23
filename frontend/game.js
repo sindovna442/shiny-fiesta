@@ -2133,11 +2133,13 @@ const game = {
         this.currentGame = gameName;
         document.getElementById('gameScore').textContent = '0';
         if (gameName === 'chef') {
+            game.switchScreen('chefScreen');
             if (!this._chef) this._chef = new ChefGame(this);
             this._chef.start();
             return;
         }
         if (gameName === 'surf') {
+            game.switchScreen('surfScreen');
             if (!this._surf) this._surf = new SurfGame(this);
             this._surf.start();
             return;
@@ -2888,17 +2890,17 @@ const game = {
                     if (isBlack && this.isWhitePiece(t)) moves.push({ row: tr, col: tc });
                 }
             }
-        } else if (type === '♜') {
+        } else if (type === '♜' || type === '♖') {
             addSliding(1, 0); addSliding(-1, 0); addSliding(0, 1); addSliding(0, -1);
-        } else if (type === '♞') {
+        } else if (type === '♞' || type === '♘') {
             const jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
             jumps.forEach(([dr,dc]) => addIfValid(row+dr, col+dc));
-        } else if (type === '♝') {
+        } else if (type === '♝' || type === '♗') {
             addSliding(1,1); addSliding(1,-1); addSliding(-1,1); addSliding(-1,-1);
-        } else if (type === '♛') {
+        } else if (type === '♛' || type === '♕') {
             addSliding(1,0); addSliding(-1,0); addSliding(0,1); addSliding(0,-1);
             addSliding(1,1); addSliding(1,-1); addSliding(-1,1); addSliding(-1,-1);
-        } else if (type === '♚') {
+        } else if (type === '♚' || type === '♔') {
             [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr,dc]) => addIfValid(row+dr, col+dc));
         }
         
@@ -4228,7 +4230,7 @@ class SurfGame {
 
         // World
         this.speed = 280;        // px/s
-        this.baseSpeed = 280;
+        this.baseSpeed = 140;
         this.maxSpeed = 600;
         this.distance = 0;
         this.coins = 0;
@@ -4618,12 +4620,8 @@ class SurfGame {
         const W = this.W, H = this.H;
         if (!ctx) return;
 
-        // Sky gradient
-        const sky = ctx.createLinearGradient(0, 0, 0, H * 0.55);
-        sky.addColorStop(0, '#1a8fcf');
-        sky.addColorStop(0.6, '#5dbce8');
-        sky.addColorStop(1, '#a3dff5');
-        ctx.fillStyle = sky;
+        // Only ocean (no sky)
+        ctx.fillStyle = '#1a7ab5';
         ctx.fillRect(0, 0, W, H);
 
         // Sun
