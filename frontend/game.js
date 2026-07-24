@@ -2388,6 +2388,7 @@ const game = {
     chessPossibleMoves: [],
     chessDifficulty: 'easy',
     chessAIDepth: 1,
+    chessLastMove: null, // {from:{row,col}, to:{row,col}} tracking for highlighting
     
     // Цвета фигур по референсу
     chessColors: {
@@ -2442,7 +2443,7 @@ const game = {
     
     chessSetDifficulty(d) {
         this.chessDifficulty = d;
-        this.chessAIDepth = d === 'easy' ? 1 : d === 'medium' ? 2 : 3;
+        this.chessAIDepth = d === 'easy' ? 2 : d === 'medium' ? 3 : 4;
         this.initChess();
     },
     
@@ -2463,6 +2464,11 @@ const game = {
                 const piece = this.chessBoard[this.chessSelected.row][this.chessSelected.col];
                 this.chessBoard[row][col] = piece;
                 this.chessBoard[this.chessSelected.row][this.chessSelected.col] = '';
+                
+                this.chessLastMove = {
+                    from: { row: this.chessSelected.row, col: this.chessSelected.col },
+                    to: { row, col }
+                };
                 
                 // Превращение пешки
                 if (piece === '♙' && row === 0) this.chessBoard[row][col] = '♕';
@@ -2582,6 +2588,12 @@ const game = {
         
         const piece = this.chessBoard[bestMove.fromR][bestMove.fromC];
         this.chessBoard[bestMove.toR][bestMove.toC] = piece;
+        
+        this.chessLastMove = {
+            from: { row: bestMove.fromR, col: bestMove.fromC },
+            to: { row: bestMove.toR, col: bestMove.toC }
+        };
+        
         this.chessBoard[bestMove.fromR][bestMove.fromC] = '';
         
         // Превращение пешки
@@ -2618,6 +2630,22 @@ const game = {
                     this.drawCatPiece(ctx, x + size/2, y + size/2, size * 0.42, piece, isW);
                 }
             }
+        }
+        
+        // Подсветка последнего хода
+        if (this.chessLastMove) {
+            const { from, to } = this.chessLastMove;
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
+            ctx.lineWidth = 4;
+            // Подсветка клетки ОТКУДА
+            ctx.strokeRect(from.col * size + 2, from.row * size + 2, size - 4, size - 4);
+            // Подсветка клетки КУДА
+            ctx.strokeRect(to.col * size + 2, to.row * size + 2, size - 4, size - 4);
+            // Золотая точка в центре исходной клетки
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.4)';
+            ctx.beginPath();
+            ctx.arc(from.col * size + size/2, from.row * size + size/2, 8, 0, Math.PI * 2);
+            ctx.fill();
         }
         
         // Статус
