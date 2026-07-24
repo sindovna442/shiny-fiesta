@@ -4547,7 +4547,9 @@ class SurfGame {
         const onTS = (e) => {
             if (!e.touches || e.touches.length === 0) return;
             const t = e.touches[0];
-            self._swipeStart = { x: t.clientX, y: t.clientY };
+            // Track start position AND timestamp so we can distinguish
+            // a quick tap (jump) from a longer swipe (lane / duck).
+            self._swipeStart = { x: t.clientX, y: t.clientY, t: performance.now() };
         };
         const onTE = (e) => {
             if (!self._swipeStart) return;
@@ -4555,7 +4557,16 @@ class SurfGame {
             const dx = t.clientX - self._swipeStart.x;
             const dy = t.clientY - self._swipeStart.y;
             const adx = Math.abs(dx), ady = Math.abs(dy);
-            if (Math.max(adx, ady) < 20) return;
+            const elapsed = performance.now() - self._swipeStart.t;
+            // QUICK TAP (<20px movement AND <250ms) -> jump. Mobile-friendly.
+            if (Math.max(adx, ady) < 20 && elapsed < 250) {
+                self.jump();
+                self._swipeStart = null;
+                e.preventDefault();
+                return;
+            }
+            // SWIPE: deliberate finger drag for lane change / duck.
+            if (Math.max(adx, ady) < 20) { self._swipeStart = null; return; }
             if (adx > ady) {
                 if (dx > 0) self.moveLane(1); else self.moveLane(-1);
             } else {
