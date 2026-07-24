@@ -3976,6 +3976,7 @@ class HellfireBallsGame {
 
     _gameOver() {
         this.running = false;
+        this.stopWaveLoop();
         const fs = document.getElementById('hellfireFinalScore');
         if (fs) fs.textContent = this.score;
         const bl = document.getElementById('hellfireBestLine');
@@ -4491,6 +4492,7 @@ class SurfGame {
         this.ctx = this.canvas.getContext('2d');
         this.fitCanvas();
         this.reset();
+        this.startWaveLoop();
         this.running = true;
         this._lastT = performance.now();
         this.bindInput();
@@ -4598,6 +4600,96 @@ class SurfGame {
     moveLane(dir) {
         if (this.trampolining) { this.lane = Math.max(0, Math.min(2, this.lane + dir)); return; }
         this.lane = Math.max(0, Math.min(2, this.lane + dir));
+    }
+
+    // Звук прыжка (всплеск/свист)
+    playJumpSound() {
+        if (game._muted) return;
+        const ctx = game.audioCtx;
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        // Свист прыжка — резкий подъём частоты
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+    }
+
+    // Звук сбора монеты (короткий звонкий пинг)
+    playCoinSound() {
+        if (game._muted) return;
+        const ctx = game.audioCtx;
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        // Две быстрые ноты: высокая → ещё выше
+        for (let i = 0; i < 2; i++) {
+            const t = now + i * 0.06;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1200 + i * 800, t);
+            osc.frequency.exponentialRampToValueAtTime(2000 + i * 1000, t + 0.05);
+            gain.gain.setValueAtTime(0.08, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.15);
+        }
+    }
+
+    // Фоновый шум волн (тихий, циклический, накладывается на другие звуки)
+    _waveInterval = null;
+
+    playWaveSound() {
+        if (game._muted) return;
+        const ctx = game.audioCtx;
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        // Шум волны — белый шум через низкочастотный фильтр
+        const bufferSize = 256;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 3);
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 300;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.015, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start(now);
+        noise.stop(now + 1);
+    }
+
+    startWaveLoop() {
+        this.stopWaveLoop();
+        const loop = () => {
+            this.playWaveSound();
+            this._waveInterval = setTimeout(loop, 800 + Math.random() * 600);
+        };
+        loop();
+    }
+
+    stopWaveLoop() {
+        if (this._waveInterval) {
+            clearTimeout(this._waveInterval);
+            this._waveInterval = null;
+        }
     }
 
     jump() {
@@ -4733,6 +4825,7 @@ class SurfGame {
             if (dist < collectRange) {
                 p.collected = true;
                 this.coins += p.gold ? 8 : 1;
+                this.playCoinSound();
                 this.spawnParticles(p.x, p.y, p.gold ? '#ffd700' : '#ffeef0', 4);
                 if (this.magnetTimer > 0 && dist > 40) {
                     p.x += (this.playerX - p.x) * 0.3;
@@ -4767,7 +4860,7 @@ class SurfGame {
             if (o.type === 'reef' || o.type === 'crab') {
                 if (this.jumping) fatal = false;
             }
-            if (o.type === 'fish' && this.jumping) { fatal = false; this.coins += 5; }
+            if (o.type === 'fish' && this.jumping) { fatal = false; this.coins += 5; this.playJumpSound(); }
             if (o.type === 'lifeRing') fatal = false;
             if (this.trampolining) fatal = false;
 
