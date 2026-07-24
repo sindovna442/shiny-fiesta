@@ -2010,28 +2010,25 @@ const game = {
         }
     },
 
-    // Отрисовать две страницы блокнота
+    // Рендер текущей страницы блокнота (single-canvas, соответствует HTML).
     renderNotebookPage() {
-        const leftCanvas = document.getElementById('leftCanvas');
-        const rightCanvas = document.getElementById('rightCanvas');
-        const leftLabel = document.getElementById('leftLabel');
-        const rightLabel = document.getElementById('rightLabel');
-        const leftDate = document.getElementById('leftDate');
-        const rightDate = document.getElementById('rightDate');
-        const pagesInfo = document.getElementById('pagesInfo');
+        const canvas = document.getElementById('notebookCanvas');
+        const labelEl = document.getElementById('pageTitle');
+        const dateEl = document.getElementById('pageDate');
         const prevBtn = document.querySelector('.notebook-nav.prev');
         const nextBtn = document.querySelector('.notebook-nav.next');
+        const pagesInfo = document.getElementById('pageNumber');
         
-        this.renderSinglePage(leftCanvas, leftLabel, leftDate, this.currentPageIndex);
-        this.renderSinglePage(rightCanvas, rightLabel, rightDate, this.currentPageIndex + 1);
+        this.renderSinglePage(canvas, labelEl, dateEl, this.currentPageIndex);
         
         const total = this.sketchPages.length;
-        const displayPage = total > 0 ? this.currentPageIndex + 1 : 0;
-        const totalPages = total > 0 ? Math.ceil(total / 2) : 0;
-        pagesInfo.textContent = total > 0 ? `Страница ${Math.ceil(displayPage / 2)} / ${totalPages}` : 'Нет страниц';
-        
-        prevBtn.disabled = this.currentPageIndex <= 0;
-        nextBtn.disabled = this.currentPageIndex >= total - 1;
+        if (pagesInfo) {
+            pagesInfo.textContent = total > 0
+                ? `Страница ${this.currentPageIndex + 1} / ${total}`
+                : 'Нет страниц';
+        }
+        if (prevBtn) prevBtn.disabled = (total === 0 || this.currentPageIndex <= 0);
+        if (nextBtn) nextBtn.disabled = (total === 0 || this.currentPageIndex >= total - 1);
     },
 
     renderSinglePage(canvas, labelEl, dateEl, pageIndex) {
@@ -2091,32 +2088,35 @@ const game = {
             : '';
     },
 
-    // Перелистывание — анимируем правую/левую страницу
+    // Перелистывание: одна страница с CSS-анимацией.
     flipPage(newIndex) {
         if (this.isFlipping) return;
+        if (newIndex < 0 || newIndex >= this.sketchPages.length) return;
         this.isFlipping = true;
         
+        const pageEl = document.getElementById('notebookPage');
         const direction = newIndex > this.currentPageIndex ? 'next' : 'prev';
-        const rightPageEl = document.getElementById('rightPage');
-        const leftPageEl = document.getElementById('leftPage');
+        const flipClass = direction === 'next' ? 'flip-out-next' : 'flip-out-prev';
         
-        rightPageEl.classList.remove('flip-out');
-        leftPageEl.classList.remove('flip-out');
-        
-        void rightPageEl.offsetWidth;
-        void leftPageEl.offsetWidth;
-        
-        if (direction === 'next') {
-            rightPageEl.classList.add('flip-out');
-        } else {
-            leftPageEl.classList.add('flip-out');
+        if (pageEl) {
+            pageEl.classList.remove('flip-out-next');
+            pageEl.classList.remove('flip-out-prev');
+            void pageEl.offsetWidth;  // рестарт CSS-анимации
+            pageEl.classList.add(flipClass);
         }
         
+        // В апексе анимации — заменяем содержимое страницы.
         setTimeout(() => {
             this.currentPageIndex = newIndex;
             this.renderNotebookPage();
-            rightPageEl.classList.remove('flip-out');
-            leftPageEl.classList.remove('flip-out');
+        }, 220);
+        
+        // Полная очистка после анимации.
+        setTimeout(() => {
+            if (pageEl) {
+                pageEl.classList.remove('flip-out-next');
+                pageEl.classList.remove('flip-out-prev');
+            }
             this.isFlipping = false;
         }, 500);
     },
@@ -2185,10 +2185,12 @@ const game = {
         this.addNotification('Скачано! 📥', 'success');
     },
 
-    // Вернуться из редактора в блокнот
     backToSketchList() {
         this.switchScreen('sketchScreen');
-        this.loadNotebookPages();
+        // Render in-memory pages immediately so the just-saved sketch is visible.
+        this.renderNotebookPage();
+        // Background-refresh from API to pick up any server-side state changes.
+        this.loadNotebookPages().catch(function () {});
     },
 
     // ===== МИНИ-ИГРЫ =====
@@ -3072,6 +3074,10 @@ const game = {
         
         this.addNotification('Рисунок сохранён! 😻', 'success');
         
+        // Возвращаемся в блокнот СРАЗУ (не ждём сервера) — иначе пользователь
+        // не видит свой рисунок, пока идёт сетевой round-trip.
+        this.backToSketchList();
+        
         // Try to save to server as well (best-effort)
         try {
             const response = await fetch(API_BASE + '/sketches/' + this.petId + '/save', {
@@ -3464,7 +3470,11 @@ class DrawingEditor {
             this.ctx.lineTo(x, y);
             this.ctx.stroke();
         } else if (this.currentTool === 'eraser') {
-            this.ctx.clearRect(x - this.brushSize / 2, y - this.brushSize / 2, this.brushSize, this.brushSize);
+            // Paint a solid white circle so erasing is visually obvious (vs. transparent clearRect).
+            this.ctx.fillStyle = 'white';
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, this.brushSize / 2, 0, Math.PI * 2);
+            this.ctx.fill();
         }
     }
 
@@ -3499,6 +3509,7 @@ class DrawingEditor {
             stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
         }
         ctx.putImageData(imageData, 0, 0);
+        this.saveHistory();
     }
 
     stopDrawing() {
@@ -3540,82 +3551,6 @@ class DrawingEditor {
             if (btn) btn.classList.add('active');
         }
         this.canvas.style.cursor = tool === 'fill' ? 'crosshair' : 'crosshair';
-    }
-
-    // Flood fill (bucket fill) using scanline algorithm
-    floodFill(startX, startY, fillColor) {
-        const ctx = this.ctx;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-        
-        if (startX < 0 || startX >= w || startY < 0 || startY >= h) return;
-        
-        // Get the image data
-        const imageData = ctx.getImageData(0, 0, w, h);
-        const data = imageData.data;
-        
-        // Parse fill color (hex or named)
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = 1; tmpCanvas.height = 1;
-        const tmpCtx = tmpCanvas.getContext('2d');
-        tmpCtx.fillStyle = fillColor;
-        tmpCtx.fillRect(0, 0, 1, 1);
-        const fillData = tmpCtx.getImageData(0, 0, 1, 1).data;
-        
-        // Get target color at click point
-        const idx = (Math.floor(startY) * w + Math.floor(startX)) * 4;
-        const targetR = data[idx];
-        const targetG = data[idx + 1];
-        const targetB = data[idx + 2];
-        const targetA = data[idx + 3];
-        
-        // If clicking on same color, do nothing
-        if (targetR === fillData[0] && targetG === fillData[1] && targetB === fillData[2]) return;
-        
-        // Color match function
-        function matchColor(pxIdx) {
-            return Math.abs(data[pxIdx] - targetR) < 5 &&
-                   Math.abs(data[pxIdx + 1] - targetG) < 5 &&
-                   Math.abs(data[pxIdx + 2] - targetB) < 5 &&
-                   Math.abs(data[pxIdx + 3] - targetA) < 5;
-        }
-        
-        // Scanline fill using stack
-        const stack = [];
-        const visited = new Set();
-        
-        const startIdx = Math.floor(startY) * w + Math.floor(startX);
-        if (!matchColor(startIdx * 4)) return;
-        stack.push(Math.floor(startX), Math.floor(startY));
-        
-        while (stack.length > 0) {
-            const y = stack.pop();
-            const x = stack.pop();
-            const key = y * w + x;
-            
-            if (visited.has(key)) continue;
-            if (x < 0 || x >= w || y < 0 || y >= h) continue;
-            
-            const pxIdx = (y * w + x) * 4;
-            if (!matchColor(pxIdx)) continue;
-            
-            visited.add(key);
-            
-            // Fill pixel
-            data[pxIdx] = fillData[0];
-            data[pxIdx + 1] = fillData[1];
-            data[pxIdx + 2] = fillData[2];
-            data[pxIdx + 3] = 255;
-            
-            // Add neighbors
-            stack.push(x + 1, y);
-            stack.push(x - 1, y);
-            stack.push(x, y + 1);
-            stack.push(x, y - 1);
-        }
-        
-        ctx.putImageData(imageData, 0, 0);
-        this.saveHistory();
     }
 
     clear() {
