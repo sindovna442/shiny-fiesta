@@ -4435,7 +4435,7 @@ class SurfGame {
         this.jumping = false;
         this.ducking = false;
         this.jumpT = 0;
-        this.jumpDur = 0.8;
+        this.jumpDur = 1.1;
         this.duckT = 0;
         this.duckDur = 0.5;
         this.trampolining = false;
@@ -4716,8 +4716,10 @@ class SurfGame {
 
     // ---- SPAWNING ----
     spawnObstacle() {
-        const types = ['reef', 'log', 'whale', 'fish', 'crab', 'lifeRing'];
-        const weights = [0.20, 0.20, 0.14, 0.12, 0.18, 0.16];
+        const types = ['reef', 'log', 'tallRock', 'whale', 'fish', 'crab', 'lifeRing'];
+        // reef/log/crab/fish/lifeRing are JUMPABLE (currently).
+        // tallRock + whale are DUCK-ONLY (very tall / wide low — cannot jump over).
+        const weights = [0.20, 0.20, 0.10, 0.10, 0.10, 0.16, 0.14];
         const r = Math.random();
         let cum = 0, type = 'reef';
         for (let i = 0; i < types.length; i++) { cum += weights[i]; if (r < cum) { type = types[i]; break; } }
@@ -4756,8 +4758,8 @@ class SurfGame {
 
     // ---- COLLISION ----
     playerHitbox() {
-        const pw = 40, ph = this.ducking ? 30 : (this.jumping ? 50 : 70);
-        const py = this.jumping ? this.playerY - 100 : (this.ducking ? this.playerY + 10 : this.playerY - 20);
+        const pw = 40, ph = this.ducking ? 30 : (this.jumping ? 60 : 70);
+        const py = this.jumping ? this.playerY - 130 : (this.ducking ? this.playerY + 10 : this.playerY - 20);
         return { x: this.playerX - pw/2, y: py - ph/2, w: pw, h: ph };
     }
 
@@ -4865,7 +4867,10 @@ class SurfGame {
             let fatal = true;
             // Check if correct avoidance action is active
             if (o.type === 'log' && this.jumping) fatal = false;
+            // Whale is wide+low — duck under it.
             if (o.type === 'whale' && this.ducking) fatal = false;
+            // Tall rock is very tall — jumping cannot clear it, only ducking saves you.
+            if (o.type === 'tallRock' && this.ducking) fatal = false;
             if (o.type === 'reef' || o.type === 'crab') {
                 if (this.jumping) fatal = false;
             }
@@ -5072,6 +5077,7 @@ class SurfGame {
             ctx.translate(o.x, o.y);
             if (o.type === 'reef') this.drawReef(ctx, o);
             else if (o.type === 'log') this.drawLog(ctx, o);
+            else if (o.type === 'tallRock') this.drawTallRock(ctx, o);
             else if (o.type === 'whale') this.drawWhale(ctx, o);
             else if (o.type === 'fish') this.drawFish(ctx, o);
             else if (o.type === 'crab') this.drawCrab(ctx, o);
@@ -5158,6 +5164,41 @@ class SurfGame {
         ctx.moveTo(0, -8); ctx.lineTo(0, 8);
         ctx.moveTo(20, -8); ctx.lineTo(20, 8);
         ctx.stroke();
+    }
+
+    // Tall jagged rock — visually extends ~70px above center.
+    // Unjumpable: only the duck action saves you.
+    drawTallRock(ctx, o) {
+        // Shadow at water
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(8, 18, 32, 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Main jagged spike (tall, extending up)
+        ctx.fillStyle = '#3a342f';
+        ctx.strokeStyle = '#1b1816';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-22, 22);
+        ctx.lineTo(-12, 0);
+        ctx.lineTo(-6, -30);
+        ctx.lineTo(2, -60);
+        ctx.lineTo(8, -40);
+        ctx.lineTo(14, -10);
+        ctx.lineTo(18, 5);
+        ctx.lineTo(22, 22);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Highlight stripe
+        ctx.fillStyle = 'rgba(180,180,190,0.35)';
+        ctx.beginPath();
+        ctx.moveTo(-2, -50);
+        ctx.lineTo(2, -55);
+        ctx.lineTo(7, -30);
+        ctx.lineTo(4, -10);
+        ctx.closePath();
+        ctx.fill();
     }
 
     drawWhale(ctx, o) {
@@ -5280,7 +5321,7 @@ class SurfGame {
         let y = this.playerY;
         if (this.jumping) {
             const t = this.jumpT / this.jumpDur;
-            y -= Math.sin(t * Math.PI) * 100;
+            y -= Math.sin(t * Math.PI) * 130;
         }
         if (this.trampolining) {
             const t = this.trampolineT / this.trampolineDur;
