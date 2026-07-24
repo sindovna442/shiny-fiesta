@@ -4468,6 +4468,7 @@ class SurfGame {
         this._swipeStart = null;
         this._handlers = [];
         this._keys = {};
+        this._lastTapEnd = 0;
 
         // High score
         try { this.bestDistance = parseFloat(localStorage.getItem('surfBestDist')) || 0; }
@@ -4558,9 +4559,18 @@ class SurfGame {
             const dy = t.clientY - self._swipeStart.y;
             const adx = Math.abs(dx), ady = Math.abs(dy);
             const elapsed = performance.now() - self._swipeStart.t;
-            // QUICK TAP (<20px movement AND <250ms) -> jump. Mobile-friendly.
+            // TAP DETECTED: distinguish single-tap (jump) from double-tap (duck).
             if (Math.max(adx, ady) < 20 && elapsed < 250) {
-                self.jump();
+                const now = performance.now();
+                if (self._lastTapEnd && (now - self._lastTapEnd) < 300) {
+                    // Double-tap: cancel current jump (if any) and duck instead.
+                    self.jumping = false;
+                    self.duck();
+                } else {
+                    // Single tap -> jump.
+                    self.jump();
+                }
+                self._lastTapEnd = now;
                 self._swipeStart = null;
                 e.preventDefault();
                 return;
