@@ -60,6 +60,19 @@ const game = {
             await this.createNewPet();
         }
 
+        // Pre-load sketches from localStorage (survives page reload)
+        try {
+            const localRaw = localStorage.getItem('demonCatSketches');
+            if (localRaw) {
+                this.sketchPages = JSON.parse(localRaw);
+                if (this.sketchPages.length > 0) {
+                    console.log('Pre-loaded', this.sketchPages.length, 'sketches from localStorage');
+                }
+            }
+        } catch (e) {
+            this.sketchPages = [];
+        }
+
         // Drawing editor
         this.editor = new DrawingEditor();
 
@@ -1962,10 +1975,37 @@ const game = {
                 return Object.assign({}, s, { imageData: img });
             });
             this.currentPageIndex = 0;
+            // Merge with any locally-saved sketches that the server may not have
+            try {
+                const localRaw = localStorage.getItem('demonCatSketches');
+                if (localRaw) {
+                    const localPages = JSON.parse(localRaw);
+                    if (localPages.length > 0) {
+                        // Merge: keep server entries, then append local-only ones
+                        const serverIds = new Set(this.sketchPages.map(p => p.id));
+                        for (const lp of localPages) {
+                            if (!serverIds.has(lp.id)) {
+                                this.sketchPages.push(lp);
+                            }
+                        }
+                        console.log('Merged', this.sketchPages.length, 'sketches from API + localStorage');
+                    }
+                }
+            } catch (e) {}
             this.renderNotebookPage();
         } catch (error) {
-            console.error('Error loading notebook pages:', error);
-            this.sketchPages = [];
+            console.error('Error loading notebook pages from API, trying localStorage:', error);
+            try {
+                const localData = localStorage.getItem('demonCatSketches');
+                if (localData) {
+                    this.sketchPages = JSON.parse(localData);
+                    console.log('Loaded', this.sketchPages.length, 'sketches from localStorage');
+                } else {
+                    this.sketchPages = [];
+                }
+            } catch (e) {
+                this.sketchPages = [];
+            }
             this.renderNotebookPage();
         }
     },
@@ -2121,6 +2161,12 @@ const game = {
             if (this.currentPageIndex >= this.sketchPages.length - 1 && this.currentPageIndex > 0) {
                 this.currentPageIndex--;
             }
+            // Remove from localStorage too
+            try {
+                const ls = JSON.parse(localStorage.getItem('demonCatSketches') || '[]');
+                const filtered = ls.filter(s => s.id !== page.id);
+                localStorage.setItem('demonCatSketches', JSON.stringify(filtered));
+            } catch (e) {}
             await this.loadNotebookPages();
             this.addNotification('Страница удалена 🗑️', 'info');
         } catch (error) {
@@ -2204,7 +2250,10 @@ const game = {
             try { this.initSudoku(); } catch(e) { console.error('initSudoku failed:', e); }
         } else if (gameName === 'chess') {
             document.getElementById('gameTitle').textContent = '♟️ Шахматы';
-            try { this.initChess(); } catch(e) { console.error('initChess failed:', e); }
+            try {
+                switchScreen('gameScreen');
+                setTimeout(() => this.initChess(), 50);
+            } catch(e) { console.error('initChess failed:', e); }
         }
     },
 
@@ -3001,37 +3050,56 @@ const game = {
         const imageData = this.editor.getImageData();
         const title = prompt('Назовите ваш рисунок:', 'Рисунок ' + new Date().toLocaleString());
         if (!title) return;
+        
+        // ALWAYS save locally first - full offline fallback
+        if (!Array.isArray(this.sketchPages)) this.sketchPages = [];
+        const localSketch = {
+            id: 'local-' + Date.now(),
+            title: title,
+            imageData: imageData,
+            created_at: new Date().toISOString()
+        };
+        this.sketchPages.unshift(localSketch);
+        this.currentPageIndex = 0;
+        
+        // Persist to localStorage
+        try {
+            const localSketches = JSON.parse(localStorage.getItem('demonCatSketches') || '[]');
+            localSketches.unshift(localSketch);
+            if (localSketches.length > 50) localSketches.length = 50;
+            localStorage.setItem('demonCatSketches', JSON.stringify(localSketches));
+        } catch (e) {}
+        
+        this.addNotification('Рисунок сохранён! 😻', 'success');
+        
+        // Try to save to server as well (best-effort)
         try {
             const response = await fetch(API_BASE + '/sketches/' + this.petId + '/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title, imageData })
             });
-            if (!response.ok) throw new Error('Save failed');
-            const savedJson = await response.json().catch(function () { return {}; });
-            const backendSketch = savedJson && (savedJson.sketch || savedJson);
-            // Persistence fix: append the just-saved sketch to the local
-            // cache so when backToSketchList() reloads the notebook it is
-            // visible without depending on a backend round-trip shape.
-            if (backendSketch && (backendSketch.id || backendSketch.imageData || backendSketch.image_data)) {
-                if (!Array.isArray(this.sketchPages)) this.sketchPages = [];
-                this.sketchPages = Array.isArray(this.sketchPages) ? this.sketchPages : [];
-                this.sketchPages.unshift({
-                    id: backendSketch.id || ('local-' + Date.now()),
-                    title: backendSketch.title || title,
-                    imageData: backendSketch.imageData || backendSketch.image_data || imageData,
-                    created_at: backendSketch.created_at || backendSketch.createdAt || new Date().toISOString()
-                });
-                this.currentPageIndex = 0;
+            if (response.ok) {
+                const savedJson = await response.json().catch(function () { return {}; });
+                const backendSketch = savedJson && (savedJson.sketch || savedJson);
+                if (backendSketch && backendSketch.id) {
+                    // Update local entry with real server ID
+                    this.sketchPages[0].id = backendSketch.id;
+                    // Update localStorage with server ID
+                    try {
+                        const ls = JSON.parse(localStorage.getItem('demonCatSketches') || '[]');
+                        if (ls.length > 0) ls[0].id = backendSketch.id;
+                        localStorage.setItem('demonCatSketches', JSON.stringify(ls));
+                    } catch (e) {}
+                }
             }
-            this.addNotification('Рисунок сохранён! 😻', 'success');
-            await this.getPetStatus();
-            this.updateUI();
-            this.backToSketchList();
         } catch (error) {
-            console.error('Error saving sketch:', error);
-            this.addNotification('Не удалось сохранить рисунок.', 'error');
+            console.log('Server save unavailable, using local storage');
         }
+        
+        await this.getPetStatus();
+        this.updateUI();
+        this.backToSketchList();
     },
 
     // Скачать из редактора как PNG
@@ -3627,8 +3695,8 @@ class HellfireBallsGame {
         this.W = 0; this.H = 0;
         this.cannonX = 0; this.cannonY = 0;
         this.cannonAngle = -Math.PI / 2;     // default = pointing up
-        this.cols = 6;
-        this.rows = 14;                       // max visible rows
+        this.cols = 8;
+        this.rows = 10;                       // max visible rows
         this.cellW = 0; this.cellH = 0;
         this.cellTopOffset = 40;
         this.defeatLineY = 0;
@@ -3636,7 +3704,7 @@ class HellfireBallsGame {
         this.balls = [];
         this.particles = [];
         this.ballCount = 1;                   // salvo size
-        this.ballsInReserve = 1;              // carry over after pickups
+        this.ballsInReserve = 3;              // carry over after pickups
         this.armedBomb = false;
         this.bombAvailableForTurn = false;
         this.state = 'AIMING';                // AIMING | SHOOTING | GAME_OVER
@@ -3715,7 +3783,7 @@ class HellfireBallsGame {
         this.score = 0;
         this.turn = 0;
         this.ballCount = 1;
-        this.ballsInReserve = 1;
+        this.ballsInReserve = 3;
         this.armedBomb = false;
         this.bombAvailableForTurn = false;
         this.balls = [];
@@ -4019,7 +4087,9 @@ class HellfireBallsGame {
 
     // === Events ===
     bindEvents() {
-        const onMove = (e) => this.aimEvent(e.clientX, e.clientY);
+        const onMove = (e) => {
+                this.aimEvent(e.clientX, e.clientY);
+            };
         const onDown = (e) => { if (e.button !== 0) return; if (this.state === 'AIMING') { this.fire(); e.preventDefault(); } };
         const onTouchStart = (e) => {
             if (!e.touches || e.touches.length === 0) return;
@@ -4430,7 +4500,7 @@ class SurfGame {
         this.jumping = false;
         this.ducking = false;
         this.jumpT = 0;
-        this.jumpDur = 0.5;
+        this.jumpDur = 0.8;
         this.duckT = 0;
         this.duckDur = 0.5;
         this.trampolining = false;
@@ -4577,7 +4647,11 @@ class SurfGame {
         }
         const restart = document.getElementById('surfRestart');
         if (restart) {
-            const fn = () => { this.reset(); this.running = true; this._lastT = performance.now(); requestAnimationFrame((t) => this.loop(t)); };
+            const fn = () => {
+                document.getElementById('surfGameOver').style.display = 'none';
+                this.reset(); this.running = true; this._lastT = performance.now();
+                requestAnimationFrame((t) => this.loop(t));
+            };
             restart.addEventListener('click', fn);
             this._handlers.push({ el: restart, ev: 'click', fn });
         }
@@ -4748,12 +4822,12 @@ class SurfGame {
     // ---- COLLISION ----
     playerHitbox() {
         const pw = 40, ph = this.ducking ? 30 : (this.jumping ? 50 : 70);
-        const py = this.jumping ? this.playerY - 60 : (this.ducking ? this.playerY + 10 : this.playerY - 20);
+        const py = this.jumping ? this.playerY - 100 : (this.ducking ? this.playerY + 10 : this.playerY - 20);
         return { x: this.playerX - pw/2, y: py - ph/2, w: pw, h: ph };
     }
 
     rectsOverlap(a, b) {
-        return !(a.x + a.w < b.x - b.w/2 || a.x > b.x + b.w/2 || a.y + a.h < b.y - b.h/2 || a.y > b.y + b.h/2);
+        return (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
     }
 
     // ---- GAME LOOP ----
@@ -4922,34 +4996,44 @@ class SurfGame {
         const W = this.W, H = this.H;
         if (!ctx) return;
 
-        // Only ocean (no sky)
-        ctx.fillStyle = '#1a7ab5';
+        // Full dark demonic background (no sky/sea split)
+        const bgGrad = ctx.createRadialGradient(W*0.5, H*0.3, 0, W*0.5, H*0.3, W*0.8);
+        bgGrad.addColorStop(0, '#2a1030');
+        bgGrad.addColorStop(0.4, '#1a0820');
+        bgGrad.addColorStop(0.7, '#0e0515');
+        bgGrad.addColorStop(1, '#060208');
+        ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, W, H);
 
-        // Sun
-        ctx.fillStyle = 'rgba(255,240,180,0.7)';
-        ctx.beginPath();
-        ctx.arc(W * 0.78, H * 0.13, 40, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,220,0.4)';
-        ctx.beginPath();
-        ctx.arc(W * 0.78, H * 0.13, 55, 0, Math.PI * 2);
-        ctx.fill();
+        // Demonic embers particles
+        const t = Date.now() / 1000;
+        for (let i = 0; i < 12; i++) {
+            const ex = W * (0.1 + ((i * 137 + Math.sin(t + i) * 50) % 80) / 100);
+            const ey = H * (0.05 + ((i * 97 + Math.cos(t * 0.7 + i * 2) * 30) % 95) / 100);
+            const er = 1.5 + Math.sin(t * 2 + i) * 1;
+            ctx.fillStyle = `rgba(255, ${100 + Math.sin(t + i) * 50}, 0, ${0.3 + Math.sin(t + i) * 0.2})`;
+            ctx.beginPath();
+            ctx.arc(ex, ey, er, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
-        // Clouds
-        ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        this.drawCloud(ctx, W * 0.15, H * 0.10, 1);
-        this.drawCloud(ctx, W * 0.55, H * 0.06, 0.7);
-        this.drawCloud(ctx, W * 0.42, H * 0.16, 0.5);
+        // Ground/lava glow at bottom
+        const groundGrad = ctx.createLinearGradient(0, H * 0.85, 0, H);
+        groundGrad.addColorStop(0, 'rgba(40,8,20,0)');
+        groundGrad.addColorStop(0.3, 'rgba(60,10,30,0.3)');
+        groundGrad.addColorStop(0.7, 'rgba(80,15,20,0.5)');
+        groundGrad.addColorStop(1, 'rgba(120,20,15,0.7)');
+        ctx.fillStyle = groundGrad;
+        ctx.fillRect(0, H * 0.85, W, H * 0.15);
 
-        // Ocean gradient
-        const sea = ctx.createLinearGradient(0, H * 0.45, 0, H);
-        sea.addColorStop(0, '#1a7ab5');
-        sea.addColorStop(0.3, '#0d6aa0');
-        sea.addColorStop(0.7, '#0a5088');
-        sea.addColorStop(1, '#063a5e');
-        ctx.fillStyle = sea;
-        ctx.fillRect(0, H * 0.48, W, H * 0.52);
+        // Floating ember particles
+        for (let i = 0; i < 6; i++) {
+            const fy = H * 0.88 + Math.sin(t * 1.5 + i * 2) * 12;
+            ctx.fillStyle = `rgba(255, ${150 + Math.sin(t + i) * 50}, 50, 0.15)`;
+            ctx.beginPath();
+            ctx.arc(W * (0.1 + i * 0.16), fy, 4 + Math.sin(t * 2 + i) * 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // Coin & distance HUD
         ctx.save();
@@ -5261,7 +5345,7 @@ class SurfGame {
         let y = this.playerY;
         if (this.jumping) {
             const t = this.jumpT / this.jumpDur;
-            y -= Math.sin(t * Math.PI) * 70;
+            y -= Math.sin(t * Math.PI) * 100;
         }
         if (this.trampolining) {
             const t = this.trampolineT / this.trampolineDur;
@@ -5652,7 +5736,7 @@ class ChefGame {
 
         if (this.dragging && this.dragItem && this.stage === 1) {
             // Drop ingredient on dish
-            if (y < this.H - 90 && y > 10) {
+            if (y < this.H - 30 && y > 5) {
                 if (this.dragItem.fromStrip) {
                     const ing = Object.assign({}, this.dragItem.ingredient);
                     ing.x = x;
